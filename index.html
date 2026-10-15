@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SMART IT LAB — Виртуальная IT-лаборатория с AI-наставником</title>
+  <meta name="description" content="SMART IT LAB — образовательный симулятор: сборка ПК, IoT-проекты на ESP32 и локальный AI-наставник. Работает без backend и интернета.">
+  <meta name="theme-color" content="#0b1220">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main" data-i18n="a11y.skip">Перейти к содержимому</a>
+
+  <header class="topbar">
+    <a class="brand" href="#home" data-route="home">
+      <img src="assets/logo.svg" alt="" width="36" height="36">
+      <span class="brand-text">
+        <strong>SMART IT LAB</strong>
+        <small data-i18n="app.subtitle">Виртуальная IT-лаборатория с AI-наставником</small>
+      </span>
+    </a>
+
+    <button id="nav-toggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav"
+      data-i18n-attr="aria-label:nav.menu">
+      <span aria-hidden="true">☰</span>
+    </button>
+
+    <div id="site-nav" class="site-nav">
+      <nav class="main-nav" data-i18n-attr="aria-label:nav.main">
+        <a href="#home" data-route="home" data-i18n="nav.home">Главная</a>
+        <a href="#pc" data-route="pc" data-i18n="nav.pc">PC Builder</a>
+        <a href="#iot" data-route="iot" data-i18n="nav.iot">IoT Lab</a>
+        <a href="#mentor" data-route="mentor" data-i18n="nav.mentor">AI Mentor</a>
+        <a href="#progress" data-route="progress" data-i18n="nav.progress">Мой прогресс</a>
+        <a href="#about" data-route="about" data-i18n="nav.about">О проекте</a>
+      </nav>
+      <div class="top-actions">
+        <button type="button" class="btn btn-ghost" data-open-demo data-i18n="nav.demo">Демонстрация</button>
+        <a href="#teacher" class="btn btn-ghost" data-route="teacher" data-i18n="nav.teacher">Режим преподавателя</a>
+        <div class="lang-switch" role="group" data-i18n-attr="aria-label:nav.lang">
+          <button type="button" data-lang="ru" aria-pressed="true">RU</button>
+          <button type="button" data-lang="kz" aria-pressed="false">KZ</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div id="demo-banner" class="demo-banner" hidden>
+    <div>
+      <strong id="demo-banner-title"></strong>
+      <ol id="demo-steps" class="demo-steps"></ol>
+    </div>
+    <button id="demo-exit" type="button" class="btn btn-small" data-i18n="demo.exit">Выйти из демо</button>
+  </div>
+
+  <main id="main" tabindex="-1">
+
+    <!-- ================= ГЛАВНАЯ ================= -->
+    <section class="page" data-page="home" aria-labelledby="home-title">
+      <div class="hero">
+        <div class="hero-text">
+          <h1 id="home-title" class="hero-title">SMART IT LAB</h1>
+          <p class="hero-tagline" data-i18n="home.tagline">Виртуальная IT-лаборатория для подготовки IT-специалистов</p>
+          <p class="hero-desc" data-i18n="home.desc"></p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#pc" data-i18n="home.ctaPc">Собрать ПК</a>
+            <a class="btn" href="#iot" data-i18n="home.ctaIot">Создать IoT-проект</a>
+            <button type="button" class="btn btn-ghost" data-open-demo data-i18n="nav.demo">Демонстрация</button>
+          </div>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <img src="assets/hero.svg" alt="" width="420" height="300">
+        </div>
+      </div>
+
+      <section class="stats" aria-labelledby="stats-title">
+        <h2 id="stats-title" class="section-title" data-i18n="home.statsTitle">Ваша статистика</h2>
+        <div class="stat-grid">
+          <div class="stat"><span class="stat-value" id="stat-completed">0 / 6</span><span class="stat-label" data-i18n="home.statCompleted">Пройдено лабораторий</span></div>
+          <div class="stat"><span class="stat-value" id="stat-attempts">0</span><span class="stat-label" data-i18n="home.statAttempts">Количество попыток</span></div>
+          <div class="stat"><span class="stat-value" id="stat-avg">—</span><span class="stat-label" data-i18n="home.statAvg">Средний результат</span></div>
+        </div>
+      </section>
+
+      <section aria-labelledby="labs-title">
+        <h2 id="labs-title" class="section-title" data-i18n="home.labsTitle">Лаборатории</h2>
+        <div class="lab-cards">
+          <a class="lab-card" href="#pc">
+            <span class="lab-card-icon"><svg viewBox="0 0 48 48" class="icon" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><rect x="12" y="12" width="24" height="24" rx="2"/><rect x="18" y="18" width="12" height="12"/><path d="M18 6v6M24 6v6M30 6v6M18 36v6M24 36v6M30 36v6M6 18h6M6 24h6M6 30h6M36 18h6M36 24h6M36 30h6"/></svg></span>
+            <h3>PC Builder</h3>
+            <p data-i18n="home.cardPc"></p>
+            <span class="lab-card-link"><span data-i18n="home.open">Открыть</span> →</span>
+          </a>
+          <a class="lab-card" href="#iot">
+            <span class="lab-card-icon"><svg viewBox="0 0 48 48" class="icon" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><rect x="10" y="4" width="28" height="40" rx="3"/><path d="M15 9h4v4h4V9h4v4h4V9h2"/><rect x="16" y="18" width="16" height="14" rx="1"/><path d="M6 20h4M6 26h4M6 32h4M38 20h4M38 26h4M38 32h4"/></svg></span>
+            <h3>IoT Lab</h3>
+            <p data-i18n="home.cardIot"></p>
+            <span class="lab-card-link"><span data-i18n="home.open">Открыть</span> →</span>
+          </a>
+          <a class="lab-card" href="#mentor">
+            <span class="lab-card-icon"><svg viewBox="0 0 48 48" class="icon" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><rect x="8" y="12" width="32" height="24" rx="6"/><circle cx="18" cy="24" r="3"/><circle cx="30" cy="24" r="3"/><path d="M24 6v6M18 36v4M30 36v4"/></svg></span>
+            <h3>AI Mentor</h3>
+            <p data-i18n="home.cardMentor"></p>
+            <span class="lab-card-link"><span data-i18n="home.open">Открыть</span> →</span>
+          </a>
+          <a class="lab-card" href="#progress">
+            <span class="lab-card-icon"><svg viewBox="0 0 48 48" class="icon" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M8 40V28M18 40V20M28 40V24M38 40V10M6 42h36"/></svg></span>
+            <h3 data-i18n="nav.progress">Мой прогресс</h3>
+            <p data-i18n="home.cardProgress"></p>
+            <span class="lab-card-link"><span data-i18n="home.open">Открыть</span> →</span>
+          </a>
+        </div>
+      </section>
+
+      <section aria-labelledby="why-title">
+        <h2 id="why-title" class="section-title" data-i18n="home.whyTitle">Зачем нужна виртуальная лаборатория</h2>
+        <div class="why-grid">
+          <div class="why"><h3 data-i18n="home.why1Title"></h3><p data-i18n="home.why1"></p></div>
+          <div class="why"><h3 data-i18n="home.why2Title"></h3><p data-i18n="home.why2"></p></div>
+          <div class="why"><h3 data-i18n="home.why3Title"></h3><p data-i18n="home.why3"></p></div>
+        </div>
+      </section>
+    </section>
+
+    <!-- ================= PC BUILDER ================= -->
+    <section class="page" data-page="pc" aria-labelledby="pc-title" hidden>
+      <div class="page-head">
+        <h1 id="pc-title" data-i18n="pc.title">PC Builder</h1>
+        <p class="lead" data-i18n="pc.lead"></p>
+      </div>
+
+      <div class="lab-toolbar">
+        <div id="pc-task-tabs" class="task-tabs" role="group" data-i18n-attr="aria-label:common.tasksLabel"></div>
+        <div class="toolbar-right">
+          <div id="pc-mode" class="mode-switch" role="group" data-i18n-attr="aria-label:common.modeLabel">
+            <button type="button" data-mode="learn" data-i18n="common.learn">Обучение</button>
+            <button type="button" data-mode="exam" data-i18n="common.exam">Экзамен</button>
+          </div>
+          <button id="pc-restart" type="button" class="btn btn-ghost" data-i18n="common.restart">Начать заново</button>
+        </div>
+      </div>
+
+      <dl class="metrics">
+        <div class="metric"><dt>Score · <span data-i18n="common.score">Баллы</span></dt><dd id="pc-m-score">0</dd></div>
+        <div class="metric"><dt>Mistakes · <span data-i18n="common.mistakes">Ошибки</span></dt><dd id="pc-m-mistakes">0</dd></div>
+        <div class="metric"><dt>Hints · <span data-i18n="common.hints">Подсказки</span></dt><dd id="pc-m-hints">0</dd></div>
+        <div class="metric"><dt>Time · <span data-i18n="common.time">Время</span></dt><dd id="pc-m-time">00:00</dd></div>
+      </dl>
+
+      <div id="pc-task-card" class="task-card"></div>
+
+      <div class="lab-layout">
+        <aside class="panel lab-left" aria-labelledby="pc-inv-title">
+          <h2 id="pc-inv-title" class="panel-title" data-i18n="pc.inventory">Склад комплектующих</h2>
+          <p id="pc-select-hint" class="hint" aria-live="polite"></p>
+          <div id="pc-inventory" class="inventory"></div>
+        </aside>
+
+        <section class="panel lab-center" aria-labelledby="pc-ws-title">
+          <h2 id="pc-ws-title" class="panel-title" data-i18n="pc.workspace">Системный блок</h2>
+          <div id="pc-case" class="pc-case"></div>
+          <div id="pc-meters" class="meters"></div>
+        </section>
+
+        <div class="lab-right">
+          <section class="panel" aria-labelledby="pc-check-title">
+            <h2 id="pc-check-title" class="panel-title" data-i18n="pc.panel">Панель проверки</h2>
+            <div class="btn-row">
+              <button id="pc-check" type="button" class="btn" data-i18n="pc.check">Проверить сборку</button>
+              <button id="pc-launch" type="button" class="btn btn-primary" data-i18n="pc.launch">Запустить ПК</button>
+            </div>
+            <div id="pc-console" class="console" role="log" aria-live="polite"></div>
+            <div id="pc-report" class="report" aria-live="polite"></div>
+          </section>
+          <div id="pc-mentor"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= IOT LAB ================= -->
+    <section class="page" data-page="iot" aria-labelledby="iot-title" hidden>
+      <div class="page-head">
+        <h1 id="iot-title" data-i18n="iot.title">IoT Lab</h1>
+        <p class="lead" data-i18n="iot.lead"></p>
+      </div>
+
+      <div class="lab-toolbar">
+        <div id="iot-project-tabs" class="task-tabs" role="group" data-i18n-attr="aria-label:common.tasksLabel"></div>
+        <div class="toolbar-right">
+          <div id="iot-mode" class="mode-switch" role="group" data-i18n-attr="aria-label:common.modeLabel">
+            <button type="button" data-mode="learn" data-i18n="common.learn">Обучение</button>
+            <button type="button" data-mode="exam" data-i18n="common.exam">Экзамен</button>
+          </div>
+          <button id="iot-restart" type="button" class="btn btn-ghost" data-i18n="common.restart">Начать заново</button>
+        </div>
+      </div>
+
+      <dl class="metrics">
+        <div class="metric"><dt>Score · <span data-i18n="common.score">Баллы</span></dt><dd id="iot-m-score">0</dd></div>
+        <div class="metric"><dt>Mistakes · <span data-i18n="common.mistakes">Ошибки</span></dt><dd id="iot-m-mistakes">0</dd></div>
+        <div class="metric"><dt>Hints · <span data-i18n="common.hints">Подсказки</span></dt><dd id="iot-m-hints">0</dd></div>
+        <div class="metric"><dt>Time · <span data-i18n="common.time">Время</span></dt><dd id="iot-m-time">00:00</dd></div>
+      </dl>
+
+      <div id="iot-task-card" class="task-card"></div>
+
+      <div class="lab-layout">
+        <aside class="panel lab-left" aria-labelledby="iot-pal-title">
+          <h2 id="iot-pal-title" class="panel-title" data-i18n="iot.palette">Компоненты</h2>
+          <p class="hint" data-i18n="iot.hint"></p>
+          <div id="iot-palette" class="inventory"></div>
+        </aside>
+
+        <section id="iot-board-panel" class="panel lab-center" aria-labelledby="iot-board-title">
+          <h2 id="iot-board-title" class="panel-title" data-i18n="iot.board">Виртуальная плата</h2>
+          <div id="iot-board" class="iot-board"></div>
+        </section>
+
+        <div class="lab-right">
+          <section class="panel" aria-labelledby="iot-state-title">
+            <h2 id="iot-state-title" class="panel-title" data-i18n="iot.state">Состояние системы</h2>
+            <h3 class="sub-title" data-i18n="iot.connections">Соединения</h3>
+            <div id="iot-connections"></div>
+            <div class="btn-row">
+              <button id="iot-check" type="button" class="btn btn-primary" data-i18n="iot.check">Проверить схему</button>
+              <button id="iot-finish" type="button" class="btn" data-i18n="iot.finishExam" hidden>Завершить экзамен</button>
+            </div>
+            <div id="iot-check-result" aria-live="polite"></div>
+            <h3 class="sub-title" data-i18n="iot.sim.title">Симуляция</h3>
+            <div id="iot-sim-control" class="sim-control"></div>
+            <div id="iot-sim-readout" aria-live="polite"></div>
+            <div id="iot-report" class="report" aria-live="polite"></div>
+          </section>
+          <div id="iot-mentor"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= AI MENTOR ================= -->
+    <section class="page narrow" data-page="mentor" aria-labelledby="mentor-title" hidden>
+      <div class="page-head">
+        <h1 id="mentor-title" data-i18n="mentorPage.title">AI Mentor</h1>
+        <p class="lead" data-i18n="mentorPage.lead"></p>
+        <p id="mentor-endpoint-status" class="status-line"></p>
+      </div>
+
+      <section class="panel" aria-labelledby="pipeline-title">
+        <h2 id="pipeline-title" class="panel-title" data-i18n="mentorPage.pipelineTitle">Как AI Mentor принимает решение</h2>
+        <ol class="pipeline">
+          <li><strong data-i18n="mentorPage.p1"></strong><span data-i18n="mentorPage.p1d"></span></li>
+          <li><strong data-i18n="mentorPage.p2"></strong><span data-i18n="mentorPage.p2d"></span></li>
+          <li><strong data-i18n="mentorPage.p3"></strong><span data-i18n="mentorPage.p3d"></span></li>
+          <li><strong data-i18n="mentorPage.p4"></strong><span data-i18n="mentorPage.p4d"></span></li>
+        </ol>
+      </section>
+
+      <section class="panel" aria-labelledby="explain-title">
+        <h2 id="explain-title" class="panel-title" data-i18n="mentorPage.explainTitle">Объяснить компонент</h2>
+        <div class="explain-row">
+          <label for="mentor-component" data-i18n="mentorPage.choose">Компонент</label>
+          <select id="mentor-component"></select>
+          <button id="mentor-explain-btn" type="button" class="btn btn-primary" data-i18n="mentorPage.explain">Объяснить</button>
+        </div>
+        <div id="mentor-explain-out" class="msg msg-mentor explain-out" aria-live="polite" hidden></div>
+        <div class="btn-row">
+          <a class="btn" href="#pc" data-i18n="mentorPage.openPc">Открыть PC Builder</a>
+          <a class="btn" href="#iot" data-i18n="mentorPage.openIot">Открыть IoT Lab</a>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="mentor-ai-title">
+        <h2 id="mentor-ai-title" class="panel-title" data-i18n="about.aiTitle">Как используется искусственный интеллект</h2>
+        <ul class="nice-list" data-i18n-html="about.ai"></ul>
+        <p class="note" data-i18n="about.aiHonest"></p>
+      </section>
+    </section>
+
+    <!-- ================= ПРОГРЕСС ================= -->
+    <section class="page narrow" data-page="progress" aria-labelledby="progress-title" hidden>
+      <div class="page-head">
+        <h1 id="progress-title" data-i18n="progress.title">Мой прогресс</h1>
+        <p class="lead" data-i18n="progress.lead"></p>
+      </div>
+      <div class="panel table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col" data-i18n="progress.colTask">Задание</th>
+              <th scope="col" data-i18n="progress.colLab">Лаборатория</th>
+              <th scope="col" data-i18n="progress.colStatus">Статус</th>
+              <th scope="col" class="num" data-i18n="progress.colBest">Лучший балл</th>
+              <th scope="col" class="num" data-i18n="progress.colLast">Последний</th>
+              <th scope="col" class="num" data-i18n="progress.colAttempts">Попытки</th>
+              <th scope="col" data-i18n="progress.colDate">Последняя попытка</th>
+            </tr>
+          </thead>
+          <tbody id="progress-rows"></tbody>
+        </table>
+      </div>
+      <div class="btn-row">
+        <button id="progress-reset" type="button" class="btn btn-danger" data-i18n="progress.reset">Сбросить прогресс</button>
+      </div>
+    </section>
+
+    <!-- ================= РЕЖИМ ПРЕПОДАВАТЕЛЯ ================= -->
+    <section class="page narrow" data-page="teacher" aria-labelledby="teacher-title" hidden>
+      <div class="page-head">
+        <h1 id="teacher-title" data-i18n="teacher.title">Режим преподавателя</h1>
+        <p class="lead" data-i18n="teacher.lead"></p>
+      </div>
+      <div class="panel teacher-controls">
+        <label for="teacher-student" data-i18n="teacher.studentId">Код учащегося или группы</label>
+        <input id="teacher-student" type="text" maxlength="60" autocomplete="off" data-i18n-attr="placeholder:teacher.studentPlaceholder">
+        <div class="btn-row">
+          <button id="teacher-export-json" type="button" class="btn btn-primary" data-i18n="teacher.exportJson">Экспорт результата (JSON)</button>
+          <button id="teacher-export-csv" type="button" class="btn" data-i18n="teacher.exportCsv">Экспорт результата (CSV)</button>
+        </div>
+      </div>
+      <div id="teacher-live" class="panel" hidden>
+        <h2 class="panel-title" data-i18n="teacher.liveTitle">Текущие попытки</h2>
+        <ul class="nice-list"></ul>
+      </div>
+      <div class="panel table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col" data-i18n="progress.colTask">Задание</th>
+              <th scope="col" data-i18n="teacher.colComp">Компетенции</th>
+              <th scope="col" class="num" data-i18n="common.maxScore">Макс. балл</th>
+              <th scope="col" class="num" data-i18n="progress.colBest">Лучший балл</th>
+              <th scope="col" class="num" data-i18n="progress.colLast">Последний</th>
+              <th scope="col" class="num" data-i18n="teacher.colMistakes">Ошибки</th>
+              <th scope="col" class="num" data-i18n="teacher.colHints">Подсказки</th>
+              <th scope="col" class="num" data-i18n="progress.colAttempts">Попытки</th>
+              <th scope="col" data-i18n="progress.colStatus">Статус</th>
+            </tr>
+          </thead>
+          <tbody id="teacher-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================= О ПРОЕКТЕ ================= -->
+    <section class="page narrow" data-page="about" aria-labelledby="about-title" hidden>
+      <div class="page-head">
+        <h1 id="about-title" data-i18n="about.title">О проекте</h1>
+        <p class="lead" data-i18n="about.lead"></p>
+      </div>
+      <section class="panel"><h2 class="panel-title" data-i18n="about.problemTitle"></h2><p data-i18n="about.problem"></p></section>
+      <div class="two-col">
+        <section class="panel"><h2 class="panel-title" data-i18n="about.helpsTitle"></h2><ul class="nice-list" data-i18n-html="about.helps"></ul></section>
+        <section class="panel"><h2 class="panel-title" data-i18n="about.audienceTitle"></h2><ul class="nice-list" data-i18n-html="about.audience"></ul>
+          <h2 class="panel-title spaced" data-i18n="about.techTitle"></h2><p data-i18n="about.tech"></p></section>
+      </div>
+      <section class="panel"><h2 class="panel-title" data-i18n="about.aiTitle"></h2><ul class="nice-list" data-i18n-html="about.ai"></ul><p class="note" data-i18n="about.aiHonest"></p></section>
+      <section class="panel"><h2 class="panel-title" data-i18n="about.ethicsTitle"></h2><ul class="nice-list" data-i18n-html="about.ethics"></ul></section>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p data-i18n="app.footer">SMART IT LAB — учебный open-source проект.</p>
+  </footer>
+
+  <dialog id="demo-dialog" class="dialog" aria-labelledby="demo-title">
+    <h2 id="demo-title" data-i18n="demo.title">Демонстрация</h2>
+    <p data-i18n="demo.lead"></p>
+    <div class="demo-options">
+      <button type="button" class="demo-option" data-start-demo="pc">
+        <strong data-i18n="demo.pc">Демо PC Builder</strong><span data-i18n="demo.pcDesc"></span>
+      </button>
+      <button type="button" class="demo-option" data-start-demo="iot">
+        <strong data-i18n="demo.iot">Демо IoT</strong><span data-i18n="demo.iotDesc"></span>
+      </button>
+    </div>
+    <div class="btn-row end">
+      <button id="demo-close" type="button" class="btn btn-ghost" data-i18n="a11y.close">Закрыть</button>
+    </div>
+  </dialog>
+
+  <div id="toast-region" class="toast-region" role="status" aria-live="polite"></div>
+
+  <noscript><p class="noscript">Для работы SMART IT LAB включите JavaScript.</p></noscript>
+
+  <!-- Обычные скрипты (не модули): так сайт открывается даже двойным кликом по index.html -->
+  <script src="js/config.js"></script>
+  <script src="js/translations.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/progress.js"></script>
+  <script src="js/pc-engine.js"></script>
+  <script src="js/iot-engine.js"></script>
+  <script src="js/ai-mentor.js"></script>
+  <script src="js/pc-builder.js"></script>
+  <script src="js/iot-lab.js"></script>
+  <script src="js/teacher.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
