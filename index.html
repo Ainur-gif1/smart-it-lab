@@ -7,7 +7,7 @@
   <meta name="description" content="SMART IT LAB — образовательный симулятор: сборка ПК, IoT-проекты на ESP32 и локальный AI-наставник. Работает без backend и интернета.">
   <meta name="theme-color" content="#0b1220">
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="css/style.css?v=practice-1">
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <a class="skip-link" href="#main" data-i18n="a11y.skip">Перейти к содержимому</a>
@@ -29,7 +29,6 @@
     <div id="site-nav" class="site-nav">
       <nav class="main-nav" data-i18n-attr="aria-label:nav.main">
         <a href="#home" data-route="home" data-i18n="nav.home">Главная</a>
-        <a href="#practice" data-route="practice" data-i18n="practice.nav">Практикалық сабақ</a>
         <a href="#pc" data-route="pc" data-i18n="nav.pc">PC Builder</a>
         <a href="#iot" data-route="iot" data-i18n="nav.iot">IoT Lab</a>
         <a href="#mentor" data-route="mentor" data-i18n="nav.mentor">AI Mentor</a>
@@ -65,7 +64,6 @@
           <p class="hero-tagline" data-i18n="home.tagline">Виртуальная IT-лаборатория для подготовки IT-специалистов</p>
           <p class="hero-desc" data-i18n="home.desc"></p>
           <div class="hero-actions">
-            <a class="btn btn-primary" href="#practice" data-i18n="practice.nav">Практикалық сабақ</a>
             <a class="btn btn-primary" href="#pc" data-i18n="home.ctaPc">Собрать ПК</a>
             <a class="btn" href="#iot" data-i18n="home.ctaIot">Создать IoT-проект</a>
             <button type="button" class="btn btn-ghost" data-open-demo data-i18n="nav.demo">Демонстрация</button>
@@ -123,10 +121,6 @@
           <div class="why"><h3 data-i18n="home.why3Title"></h3><p data-i18n="home.why3"></p></div>
         </div>
       </section>
-    </section>
-
-    <section class="page narrow" data-page="practice" aria-labelledby="practice-title" hidden>
-      <div id="practice-content"></div>
     </section>
 
     <!-- ================= PC BUILDER ================= -->
@@ -399,8 +393,6 @@
   <script src="js/pc-builder.js"></script>
   <script src="js/iot-lab.js"></script>
   <script src="js/teacher.js"></script>
-  <script src="js/practice.js"></script>
-  <script src="js/app.js?v=practice-1"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>
-
