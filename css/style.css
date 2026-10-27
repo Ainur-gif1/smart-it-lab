@@ -655,3 +655,32 @@ input[type="range"]:disabled { opacity: 0.4; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
 }
+
+
+/* Classroom worksheet */
+.practice-eyebrow { color: var(--accent, #67e8f9); letter-spacing: .08em; font-size: .8rem; font-weight: 700; }
+.practice-plan { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; padding-left: 1.5rem; }
+.worksheet-label { display: block; font-weight: 600; margin: 1.25rem 0 .5rem; }
+#practice-content select, #practice-content input[type="text"], #practice-code, #practice-content textarea { width: 100%; max-width: 100%; box-sizing: border-box; }
+#practice-content textarea { display: block; min-height: 110px; resize: vertical; padding: .85rem; font: inherit; line-height: 1.6; color: inherit; background: var(--bg, #0b1220); border: 1px solid var(--border, #334155); border-radius: 8px; }
+.practice-check { display: flex; gap: .65rem; align-items: flex-start; padding: .5rem 0; }
+.practice-check input { margin-top: .35rem; accent-color: #22d3ee; }
+#practice-save { font-size: .85rem; color: var(--muted, #94a3b8); }
+@media (max-width: 600px) { .practice-plan { grid-template-columns: 1fr; } }
+@media print {
+  body:has([data-page="practice"]:not([hidden])) { background: white !important; color: black !important; }
+  body:has([data-page="practice"]:not([hidden])) .topbar,
+  body:has([data-page="practice"]:not([hidden])) .footer,
+  body:has([data-page="practice"]:not([hidden])) .practice-no-print,
+  body:has([data-page="practice"]:not([hidden])) #practice-save,
+  body:has([data-page="practice"]:not([hidden])) #demo-banner { display: none !important; }
+  [data-page="practice"] .panel { background: white !important; color: black !important; border: 1px solid #bbb; box-shadow: none; break-inside: avoid; }
+  [data-page="practice"] textarea, [data-page="practice"] input, [data-page="practice"] select { background: white !important; color: black !important; }
+  [data-page="practice"] .hint, [data-page="practice"] .note, [data-page="practice"] .lead { color: #333 !important; }
+}
+
+.practice-print-answer { display: none; }
+@media print {
+  [data-page="practice"] textarea { display: none !important; }
+  [data-page="practice"] .practice-print-answer { display: block; white-space: pre-wrap; overflow-wrap: anywhere; border-bottom: 1px solid #bbb; padding: .5rem 0; }
+}
