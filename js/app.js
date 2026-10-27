@@ -5,7 +5,7 @@
   const t = (...args) => SIL.t(...args);
   const { $, $$, esc } = SIL.ui;
   const LANG_KEY = "smartitlab.lang";
-  const ROUTES = ["home", "pc", "iot", "mentor", "progress", "teacher", "about"];
+  const ROUTES = ["home", "practice", "pc", "iot", "mentor", "progress", "teacher", "about"];
   let currentRoute = null;
   const demo = { lab: null };
 
@@ -42,7 +42,7 @@
 
   // ---------------- Навигация ----------------
   function updateTitle() {
-    const names = { home: "", pc: "nav.pc", iot: "nav.iot", mentor: "nav.mentor", progress: "nav.progress", teacher: "nav.teacher", about: "nav.about" };
+    const names = { home: "", practice: "practice.nav", pc: "nav.pc", iot: "nav.iot", mentor: "nav.mentor", progress: "nav.progress", teacher: "nav.teacher", about: "nav.about" };
     const key = names[currentRoute];
     document.title = key ? `${t(key)} — SMART IT LAB` : `SMART IT LAB — ${t("app.subtitle")}`;
   }
@@ -122,6 +122,7 @@
     SIL.MentorPage.init();
     SIL.ProgressPage.init();
     SIL.Teacher.init();
+    SIL.Practice.init();
 
     $$("[data-lang]").forEach((btn) => btn.addEventListener("click", () => setLanguage(btn.dataset.lang)));
     $("#nav-toggle").addEventListener("click", () => {
@@ -154,3 +155,4 @@
   SIL.App = { setLanguage, showPage, startDemo, exitDemo, escape: esc };
   document.addEventListener("DOMContentLoaded", init);
 })();
+
