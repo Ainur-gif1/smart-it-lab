@@ -250,7 +250,7 @@
         <header class="mentor-head">
           <span class="mentor-avatar">${icon("mentor")}</span>
           <div>
-            <h2 id="${options.lab}-mentor-title" class="panel-title">AI MENTOR</h2>
+            <h2 id="${options.lab}-mentor-title" class="panel-title"></h2>
             <p class="mentor-status"></p>
           </div>
         </header>
@@ -267,6 +267,7 @@
     const buttons = Array.from(options.container.querySelectorAll("[data-intent]"));
 
     function render() {
+      options.container.querySelector("h2").textContent = t("mentor.title");
       status.textContent = remoteEnabled() ? t("mentor.remote") : t("mentor.local");
       const locked = options.isExamRunning();
       buttons.forEach((btn) => {
@@ -368,3 +369,4 @@
   SIL.Mentor = { create, rules: RULES, explainPcComponent, explainIotComponent, summarizeContext };
   SIL.MentorPage = { init: initPage };
 })();
+

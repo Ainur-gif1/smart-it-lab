@@ -122,11 +122,17 @@
 
     const pinOwner = {};
     modules.forEach((mod) => {
-      if (!mod.pin) return;
       const comp = byId[mod.id];
+      if (!comp || comp.kind === "controller") {
+        issues.push({ level: "error", code: "unknownModule", compId: mod.id }); return;
+      }
+      if (!mod.pin) return;
+      if (!pinsFor(state.controller).includes(mod.pin)) {
+        issues.push({ level: "error", code: "invalidPin", compId: mod.id, pin: mod.pin }); return;
+      }
       const num = pinNumber(mod.pin);
       if (state.controller === "esp32") {
-        if (comp.kind === "output" && INPUT_ONLY.includes(num)) {
+        if ((comp.kind === "output" || mod.id === "dht22") && INPUT_ONLY.includes(num)) {
           issues.push({ level: "error", code: "inputOnly", compId: mod.id, pin: mod.pin });
         }
         if (comp.signal === "analog" && !ADC_PINS.includes(num)) {
@@ -183,3 +189,4 @@
     byId, getProject, pinsFor, pinLabel, compName, analyze, score, describeIssue, describeFix
   };
 })(typeof window !== "undefined" ? window : globalThis);
+

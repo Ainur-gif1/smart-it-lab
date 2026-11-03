@@ -1,133 +1,70 @@
-/* Режим преподавателя: сводка результатов и экспорт в JSON / CSV. */
+/* Validated local exports and classroom aggregation. No server-side grade trust. */
 (function () {
-  "use strict";
-  const SIL = (window.SIL = window.SIL || {});
-  const t = (...args) => SIL.t(...args);
-  const STUDENT_KEY = "smartitlab.studentId";
-
-  function getStudentId() {
-    try {
-      return localStorage.getItem(STUDENT_KEY) || "";
-    } catch (error) {
-      return "";
-    }
-  }
-
-  function setStudentId(value) {
-    try {
-      localStorage.setItem(STUDENT_KEY, value);
-    } catch (error) {
-      /* storage недоступен — поле просто не запомнится */
-    }
-  }
-
+  'use strict';
+  const SIL = window.SIL, t = (...v) => SIL.t(...v), P = SIL.Progress;
+  const FORMAT = 'smartitlab-classroom-v2';
+  let imported = [];
+  const task = id => SIL.TASKS.find(x => x.id === id);
   function collectRows() {
-    return SIL.TASKS.map((task) => {
-      const entry = SIL.Progress.get(task.id);
-      return {
-        task_id: task.id,
-        lab: t("labs." + task.lab),
-        task_title: t(task.titleKey),
-        competencies: t("teacher.comp." + task.id),
-        max_score: task.maxScore,
-        best_score: entry ? entry.best : null,
-        last_score: entry ? entry.lastScore : null,
-        attempts: entry ? entry.attempts : 0,
-        completed: Boolean(entry && entry.completed),
-        last_mistakes: entry ? entry.lastMistakes : null,
-        last_hints: entry ? entry.lastHints : null,
-        last_time_sec: entry ? entry.lastTimeSec : null,
-        last_mode: entry ? entry.lastMode : null,
-        last_date: entry ? entry.lastDate : null
-      };
-    });
+    return P.attempts().map(a => ({ student_code: a.studentCode, attempt_id: a.id, task_id: a.taskId, task_title: t(task(a.taskId).titleKey), date: a.date, mode: a.mode, score: a.score, max_score: 100, time_sec: a.timeSec, mistakes: a.mistakes, hints: a.hints, completed: a.completed, check_ok: a.checkResult.ok, issue_codes: a.checkResult.issueCodes.join(', '), evidence: a.report.evidence, fixes: a.report.fixes, conclusion: a.report.conclusion }));
   }
-
-  function liveSessions() {
-    return [SIL.PcBuilder, SIL.IotLab].filter(Boolean).map((lab) => lab.getLiveSummary()).filter((s) => s.active);
+  function csvCell(v) {
+    let text = v == null ? '' : String(v);
+    if (typeof v === 'string' && /^[\s\u0000-\u001f]*[=+@\-]/.test(text)) text = "'" + text;
+    return '"' + text.replace(/"/g, '""') + '"';
   }
-
-  function stamp() {
-    const d = new Date();
-    const pad = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+  function csv(rows) {
+    const keys = ['student_code', 'attempt_id', 'task_id', 'task_title', 'date', 'mode', 'score', 'max_score', 'time_sec', 'mistakes', 'hints', 'completed', 'check_ok', 'issue_codes', 'evidence', 'fixes', 'conclusion'];
+    return '\uFEFF' + [keys.map(csvCell).join(';'), ...rows.map(r => keys.map(k => csvCell(r[k])).join(';'))].join('\r\n');
   }
-
-  function exportJson() {
-    const data = {
-      project: "SMART IT LAB",
-      exportedAt: new Date().toISOString(),
-      language: SIL.getLang(),
-      studentId: getStudentId(),
-      summary: SIL.Progress.summary(),
-      tasks: collectRows(),
-      currentAttempts: liveSessions().map((s) => ({
-        task_id: s.taskId, mode: s.mode, score_now: s.score, mistakes: s.mistakes, hints: s.hints
-      }))
-    };
-    const file = `smart-it-lab-result_${stamp()}.json`;
-    SIL.ui.download(file, JSON.stringify(data, null, 2), "application/json");
-    SIL.ui.toast(t("teacher.exported", { file }), "ok");
-    return file;
+  function payload(list = P.attempts()) { return { format: FORMAT, exportedAt: new Date().toISOString(), language: SIL.getLang(), attempts: list }; }
+  function exportJson() { SIL.ui.download('smart-it-lab-results.json', JSON.stringify(payload(), null, 2), 'application/json'); }
+  function exportCsv() { SIL.ui.download('smart-it-lab-results.csv', csv(collectRows()), 'text/csv;charset=utf-8'); }
+  function validatePayload(raw) {
+    if (!raw || raw.format !== FORMAT || !Array.isArray(raw.attempts) || raw.attempts.length > 2000 || !raw.attempts.every(P.validateAttempt)) throw new Error('Invalid report format');
+    const ids = new Set();
+    const rows = raw.attempts.map(P.normalizeAttempt);
+    if (rows.some(a => ids.has(a.id) || !ids.add(a.id))) throw new Error('Duplicate IDs in file');
+    return rows;
   }
-
-  function csvCell(value) {
-    const text = value === null || value === undefined ? "" : String(value);
-    return /[";\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  async function importFiles(files) {
+    if (!Array.isArray(files)) files = Array.from(files);
+    const next = new Map(imported.map(a => [a.id, a]));
+    const local = new Map(P.attempts().map(a => [a.id, a]));
+    let accepted = 0, rejected = files.length > 50 ? files.length - 50 : 0, duplicates = 0;
+    for (const file of files.slice(0, 50)) {
+      try {
+        if (file.size > 2000000) throw new Error('File too large');
+        const rows = validatePayload(JSON.parse(await file.text()));
+        if (next.size + rows.filter(a => !next.has(a.id) && !local.has(a.id)).length > 5000) throw new Error('Too many records');
+        // Validate the whole file before mutating the imported table.
+        for (const a of rows) {
+          const prev = next.get(a.id) || local.get(a.id);
+          if (prev && JSON.stringify(P.normalizeAttempt(prev)) !== JSON.stringify(a)) throw new Error('Conflicting attempt ID');
+        }
+        for (const a of rows) { if (next.has(a.id) || local.has(a.id)) duplicates++; else { next.set(a.id, a); accepted++; } }
+      } catch (_) { rejected++; }
+    }
+    imported = Array.from(next.values()); render();
+    const status = document.getElementById('teacher-import-status');
+    if (status) status.textContent = t('classroom.importSummary', { n: accepted, errors: rejected, duplicates });
+    return { accepted, rejected, duplicates };
   }
-
-  function exportCsv() {
-    const rows = collectRows();
-    const header = ["student_id", ...Object.keys(rows[0])];
-    const student = getStudentId();
-    // «;» и BOM — чтобы Excel корректно открыл кириллицу.
-    const lines = [header.join(";"), ...rows.map((row) => [student, ...Object.values(row)].map(csvCell).join(";"))];
-    const file = `smart-it-lab-result_${stamp()}.csv`;
-    SIL.ui.download(file, "﻿" + lines.join("\r\n"), "text/csv;charset=utf-8");
-    SIL.ui.toast(t("teacher.exported", { file }), "ok");
-    return file;
-  }
-
+  function combined() { const rows = new Map(P.attempts().map(a => [a.id, a])); for (const a of imported) if (!rows.has(a.id)) rows.set(a.id, a); return Array.from(rows.values()); }
+  function exportCombined() { SIL.ui.download('smart-it-lab-class.json', JSON.stringify(payload(combined()), null, 2), 'application/json'); }
   function render() {
-    const { esc } = SIL.ui;
-    const body = document.getElementById("teacher-rows");
-    if (!body) return;
-    body.innerHTML = collectRows().map((row) => {
-      const status = SIL.Progress.statusOf(SIL.Progress.get(row.task_id));
-      const dash = (v) => (v === null || v === undefined ? "—" : v);
-      return `<tr>
-        <th scope="row">${esc(row.task_title)}<span class="muted small block">${esc(row.lab)}</span></th>
-        <td class="small">${esc(row.competencies)}</td>
-        <td class="num">${row.max_score}</td>
-        <td class="num">${dash(row.best_score)}</td>
-        <td class="num">${dash(row.last_score)}</td>
-        <td class="num">${dash(row.last_mistakes)}</td>
-        <td class="num">${dash(row.last_hints)}</td>
-        <td class="num">${row.attempts}</td>
-        <td><span class="status ${status.cls}">${esc(t(status.key))}</span></td>
-      </tr>`;
-    }).join("");
-
-    const live = document.getElementById("teacher-live");
-    const sessions = liveSessions();
-    live.hidden = sessions.length === 0;
-    live.querySelector("ul").innerHTML = sessions.map((s) => `<li>${esc(t("teacher.liveTask", {
-      lab: t("labs." + s.lab), task: t(s.titleKey), mode: t("common." + s.mode),
-      score: s.score, mistakes: s.mistakes, hints: s.hints
-    }))}</li>`).join("");
+    const { esc, formatDate } = SIL.ui, body = document.getElementById('teacher-rows'); if (!body) return;
+    body.innerHTML = combined().map(a => `<tr><td>${esc(a.studentCode || '—')}</td><th scope="row">${esc(t(task(a.taskId).titleKey))}</th><td>${esc(formatDate(a.date))}</td><td>${esc(t('common.' + a.mode))}</td><td>${a.score} / 100</td><td>${a.timeSec}</td><td>${a.mistakes}</td><td>${a.hints}</td><td>${esc(t(a.checkResult.ok ? 'classroom.checkPass' : 'classroom.checkFail'))}</td></tr>`).join('') || `<tr><td colspan="9">${esc(t('classroom.noAttempts'))}</td></tr>`;
+    const input = document.getElementById('teacher-student'); if (input && document.activeElement !== input) input.value = P.getStudentId();
   }
-
   function init() {
-    const input = document.getElementById("teacher-student");
-    if (!input) return;
-    input.value = getStudentId();
-    input.addEventListener("input", () => setStudentId(input.value.trim()));
-    document.getElementById("teacher-export-json").addEventListener("click", exportJson);
-    document.getElementById("teacher-export-csv").addEventListener("click", exportCsv);
-    document.addEventListener("sil:progress", render);
-    document.addEventListener("sil:lang", render);
-    render();
+    const input = document.getElementById('teacher-student');
+    input.value = P.getStudentId(); input.addEventListener('input', () => P.setStudentId(input.value));
+    document.getElementById('teacher-export-json').addEventListener('click', exportJson);
+    document.getElementById('teacher-export-csv').addEventListener('click', exportCsv);
+    document.getElementById('teacher-import').addEventListener('change', e => { importFiles(e.target.files).catch(() => SIL.ui.toast(t('classroom.importError'), 'error')); e.target.value = ''; });
+    document.getElementById('teacher-export-class').addEventListener('click', exportCombined);
+    document.addEventListener('sil:progress', render); document.addEventListener('sil:lang', render); document.addEventListener('sil:student', render); render();
   }
-
-  SIL.Teacher = { init, render, exportJson, exportCsv, collectRows };
+  SIL.Teacher = { init, render, exportJson, exportCsv, collectRows, importFiles, validatePayload, csv, payload, combined };
 })();

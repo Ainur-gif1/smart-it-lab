@@ -13,7 +13,7 @@
   function resetState(projectId, mode) {
     const project = E.getProject(projectId);
     Object.assign(state, {
-      projectId: project.id, mode,
+      projectId: project.id, mode, attemptId: SIL.Progress.newAttemptId(), running: false,
       controller: null, modules: [], focusId: null,
       mistakes: 0, hints: 0,
       checked: false, lastCheck: null,
@@ -31,10 +31,15 @@
   const hasProgress = () => Boolean(state.controller) || state.modules.length > 0 || state.mistakes > 0 || state.hints > 0;
   const elapsedSec = () => ((state.endedAt || Date.now()) - state.startedAt) / 1000;
   const showDetails = () => !isExam() || state.finished;
-  const outputOn = () => state.checked && project().isOn(state.simValue);
+  const outputOn = () => state.checked && state.running && project().isOn(state.simValue);
 
   // ---------------- Действия ----------------
   function invalidateCheck() {
+    if (state.completed) {
+      state.attemptId = SIL.Progress.newAttemptId(); state.startedAt = Date.now(); state.endedAt = null;
+      state.mistakes = 0; state.hints = 0;
+    }
+    state.running = false; state.completed = false;
     state.checked = false;
     state.lastCheck = null;
     state.observed = { on: false, off: false };
@@ -90,11 +95,11 @@
   function checkScheme() {
     if (isLocked()) return toast(t("common.locked"), "warn");
     const a = analysis();
+    state.running = false;
     if (a.ok) {
       state.checked = true;
       state.lastCheck = "ok";
       state.simValue = project().control.initial;
-      observe();
       toast(t("iot.checkOk"), "ok");
     } else {
       state.checked = false;
@@ -107,14 +112,21 @@
   }
 
   function observe() {
-    if (!state.checked) return;
+    if (!state.checked || !state.running) return;
     if (outputOn()) state.observed.on = true;
     else state.observed.off = true;
   }
 
   function setSimValue(value) {
-    if (!state.checked || isLocked()) return;
-    state.simValue = project().control.type === "toggle" ? Boolean(value) : Number(value);
+    if (!state.checked || !state.running || isLocked()) return;
+    if (project().control.type === "toggle") {
+      if (typeof value !== "boolean") return;
+      state.simValue = value;
+    } else {
+      const n = Number(value), c = project().control;
+      if (!Number.isFinite(n)) return;
+      state.simValue = Math.min(c.max, Math.max(c.min, Math.round(n / c.step) * c.step));
+    }
     observe();
     if (!isExam() && !state.completed && state.observed.on && state.observed.off) {
       complete();
@@ -123,6 +135,26 @@
     renderSimReadout();
     renderTaskCard();
     renderMetrics();
+  }
+
+  function startSimulation() {
+    if (isLocked() || state.running) return false;
+    if (!state.checked || !analysis().ok) { checkScheme(); if (!state.checked) return false; }
+    state.running = true; observe(); render(); return true;
+  }
+  function stopSimulation() {
+    if (!state.running) return false;
+    state.running = false; render(); return true;
+  }
+  function restartSimulation() {
+    if (isLocked() || !state.checked || !analysis().ok) return false;
+    if (state.completed) {
+      state.attemptId = SIL.Progress.newAttemptId(); state.mistakes = 0; state.hints = 0;
+      state.startedAt = Date.now(); state.endedAt = null;
+    }
+    state.completed = false; state.result = null;
+    state.observed = { on: false, off: false }; state.simValue = project().control.initial;
+    state.running = true; observe(); render(); return true;
   }
 
   function currentScore() {
@@ -134,6 +166,7 @@
   function saveAttempt(score, completed) {
     if (state.demo) return;
     SIL.Progress.recordAttempt(state.projectId, {
+      attemptId: state.attemptId, checkResult: { ok: analysis().ok, issueCodes: analysis().errors.map(e => e.code) },
       score: score.total, completed, mistakes: state.mistakes, hints: state.hints,
       timeSec: Math.round(elapsedSec()), mode: state.mode
     });
@@ -153,6 +186,7 @@
     if (!isExam() || state.finished) return;
     const score = currentScore();
     state.finished = true;
+    state.running = false;
     state.endedAt = Date.now();
     state.result = score;
     state.completed = state.checked && state.observed.on && state.observed.off;
@@ -221,6 +255,7 @@
     renderSim();
     renderReport();
     if (mentor) mentor.render();
+    if (SIL.Lessons) $("#iot-lesson").innerHTML = SIL.Lessons.html(state.projectId, state.mode);
   }
 
   function renderTabs() {
@@ -399,10 +434,13 @@
     const p = project();
     const control = p.control;
     const label = t(`iot.projects.${p.key}.control`);
-    const disabled = !state.checked || isLocked();
+    const disabled = !state.checked || !state.running || isLocked();
+    const statusKey = state.running ? "classroom.simRunning" : state.checked ? "classroom.simStopped" : "classroom.simUnchecked";
+    $("#iot-sim-status").textContent = t(statusKey);
+    $("#iot-sim-actions").innerHTML = `<button type="button" class="btn btn-primary" data-sim-action="start" ${state.running || isLocked() ? "disabled" : ""}>${esc(t("classroom.simStart"))}</button><button type="button" class="btn" data-sim-action="stop" ${!state.running ? "disabled" : ""}>${esc(t("classroom.simStop"))}</button><button type="button" class="btn" data-sim-action="restart" ${!state.checked || isLocked() ? "disabled" : ""}>${esc(t("classroom.simRestart"))}</button>`;
     const slider = els.simControl.querySelector("input");
     // Не пересоздаём ползунок, пока пользователь его двигает.
-    if (!(slider && document.activeElement === slider && slider.dataset.project === p.id)) {
+    if (!(slider && document.activeElement === slider && slider.dataset.project === p.id && slider.disabled === disabled)) {
       if (control.type === "range") {
         els.simControl.innerHTML = `
           <label class="sim-label" for="iot-sim-input">${esc(label)}: <output id="iot-sim-value">${state.simValue} ${esc(control.unit)}</output></label>
@@ -449,7 +487,7 @@
       return mod && mod.pin ? mod.pin.replace("GPIO", "") : "?";
     };
     const code = p.code({ sensor: pinOf(p.sensor), output: pinOf(p.output) });
-    const activeLine = on ? 6 : 8;
+    const activeLine = !state.running ? -1 : (on ? 6 : 8);
     const act = E.compName(p.output);
     els.simReadout.innerHTML = `
       <div class="readings">
@@ -462,10 +500,10 @@
       <p class="small">${esc(t("iot.sim.goal", { act }))}
         <span class="seen${state.observed.on ? " is-met" : ""}">${state.observed.on ? "✓" : "○"} ${esc(t("iot.sim.seenOn"))}</span>
         <span class="seen${state.observed.off ? " is-met" : ""}">${state.observed.off ? "✓" : "○"} ${esc(t("iot.sim.seenOff"))}</span></p>
-      <details class="code-box" open>
+${isExam() ? "" : `      <details class="code-box" open>
         <summary>${esc(t("iot.sim.code"))}</summary>
         <pre><code>${code.map((line, i) => `<span class="code-line${i === activeLine ? " is-active" : ""}">${esc(line) || " "}</span>`).join("\n")}</code></pre>
-      </details>`;
+      </details>`}`;
     const module = els.board.querySelector(`[data-module="${p.output}"]`);
     if (module) {
       module.classList.toggle("is-on", on);
@@ -520,6 +558,10 @@
     els.board.addEventListener("change", (e) => {
       const select = e.target.closest("[data-pin-for]");
       if (select) setPin(select.dataset.pinFor, select.value);
+    });
+    $("#iot-sim-actions").addEventListener("click", e => {
+      const button = e.target.closest("[data-sim-action]"); if (!button) return;
+      ({ start: startSimulation, stop: stopSimulation, restart: restartSimulation })[button.dataset.simAction]?.();
     });
     els.check.addEventListener("click", checkScheme);
     els.finish.addEventListener("click", finishExam);
@@ -580,7 +622,7 @@
     mentor = SIL.Mentor.create({
       lab: "iot",
       container: $("#iot-mentor"),
-      isExamRunning: () => isExam() && !state.finished,
+      isExamRunning: () => isExam(),
       onHint: () => {
         if (state.finished || state.completed) return;
         state.hints += 1;
@@ -613,8 +655,10 @@
 
   SIL.IotLab = {
     init, render, addComponent, removeComponent, setPin, checkScheme, setSimValue, finishExam,
+    startSimulation, stopSimulation, restartSimulation,
     switchProject, switchMode, restart, startDemo, exitDemo, getLiveSummary,
     get state() { return state; },
     get mentor() { return mentor; }
   };
 })();
+

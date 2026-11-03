@@ -1,0 +1,23 @@
+{
+  "status": "PASS",
+  "scope": "Local HTTP server and local asset delivery only. No browser automation or disconnected-browser test.",
+  "asset_count": 16,
+  "assets": [
+    "assets/favicon.svg",
+    "css/style.css",
+    "assets/logo.svg",
+    "js/config.js",
+    "js/translations.js",
+    "js/classroom.js",
+    "js/ui.js",
+    "js/progress.js",
+    "js/pc-engine.js",
+    "js/iot-engine.js",
+    "js/ai-mentor.js",
+    "js/pc-builder.js",
+    "js/iot-lab.js",
+    "js/teacher.js",
+    "js/reports.js",
+    "js/app.js"
+  ]
+}
