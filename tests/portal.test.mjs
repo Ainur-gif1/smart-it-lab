@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { handleApi,gradeAttempt } from '../lib/portal/core.mjs';
-const sql=new DatabaseSync(':memory:');sql.exec(fs.readFileSync(new URL('../drizzle/0000_absent_jimmy_woo.sql',import.meta.url),'utf8'));
+const sql=new DatabaseSync(':memory:');for(const name of fs.readdirSync(new URL('../drizzle/',import.meta.url)).filter(x=>x.endsWith('.sql')).sort())sql.exec(fs.readFileSync(new URL('../drizzle/'+name,import.meta.url),'utf8'));
 const DB={prepare(query){let args=[];return {bind(...a){args=a;return this;},async first(){return sql.prepare(query).get(...args)||null;},async all(){return {results:sql.prepare(query).all(...args)};},async run(){return sql.prepare(query).run(...args);}};},async batch(statements){sql.exec('BEGIN');try{const r=[];for(const s of statements)r.push(await s.run());sql.exec('COMMIT');return r;}catch(e){sql.exec('ROLLBACK');throw e;}}};
 const env={DB,AUTH_PEPPER:'test-only-pepper-abcdefghijklmnopqrstuvwxyz-123456',TEACHER_EMAILS:'teacher1@example.test,teacher2@example.test'};
 const teacher=n=>({'oai-authenticated-user-id':'teacher-'+n,'oai-authenticated-user-email':`teacher${n}@example.test`});
@@ -27,6 +27,55 @@ await test('Archived assignments reject new submissions',async()=>{await call('t
 await test('Password reset revokes sessions and requires new first-login password',async()=>{assert.equal((await call('teacher/students/'+user.id+'/reset-password','POST',{password:'123'},teacher(1))).status,400);await call('teacher/students/'+user.id+'/reset-password','POST',{password:'9012'},teacher(1));assert.equal((await call('student/me','GET',undefined,{Cookie:cookie})).status,401);const r=await call('student/login','POST',{username:'student-one',password:'9012'});assert.equal(r.data.student.mustChangePassword,true);cookie=r.cookie;});
 await test('Deactivating account immediately revokes access',async()=>{await call('teacher/students/'+user.id+'/access','POST',{active:false},teacher(1));assert.equal((await call('student/me','GET',undefined,{Cookie:cookie})).status,401);});
 await test('Expired sessions are rejected',async()=>{await call('teacher/students/'+user.id+'/access','POST',{active:true},teacher(1));const r=await call('student/login','POST',{username:'student-one',password:'9012'});sql.exec('UPDATE portal_sessions SET expires_at=1');assert.equal((await call('student/me','GET',undefined,{Cookie:r.cookie})).status,401);});
+let teacherCookie;
+await test('Only the verified project owner can establish a teacher login',async()=>{
+ assert.equal((await call('teacher/account','POST',{username:'teacher-one',password:'4321'})).status,401);
+ assert.equal((await call('teacher/account','POST',{username:'teacher-one',password:'123'},teacher(1))).status,400);
+ assert.equal((await call('teacher/account','POST',{username:'student-one',password:'4321'},teacher(1))).status,409);
+ const setup=await call('teacher/account','POST',{username:'teacher-one',password:'4321'},teacher(1));assert.equal(setup.status,200);assert.equal(setup.data.role,'teacher');
+ assert(!JSON.stringify(setup.data).includes('4321'));
+});
+await test('Teacher username/password opens teacher cabinet without ChatGPT headers',async()=>{
+ const r=await call('auth/login','POST',{username:'teacher-one',password:'4321'});assert.equal(r.status,200);assert.equal(r.data.role,'teacher');assert.equal(r.data.redirect,'/teacher');teacherCookie=r.cookie;
+ assert(r.headers.get('set-cookie').includes('__Host-sil_teacher='));
+ const students=await call('teacher/students','GET',undefined,{Cookie:teacherCookie});assert.equal(students.status,200);assert.equal(students.data.students[0].id,user.id);
+ assert.equal((await call('student/me','GET',undefined,{Cookie:teacherCookie})).status,401);
+});
+await test('Student username/password routes to student; role parameter cannot elevate it',async()=>{
+ const r=await call('auth/login','POST',{username:'student-one',password:'9012',role:'teacher'});assert.equal(r.status,200);assert.equal(r.data.role,'student');assert.equal(r.data.redirect,'/student');cookie=r.cookie;
+ assert.equal((await call('teacher/students','GET',undefined,{Cookie:cookie})).status,401);
+ assert.equal((await call('student/me','GET',undefined,{Cookie:cookie})).status,200);
+});
+await test('Student session cannot inherit teacher identity on a shared browser',async()=>{
+ assert.equal((await call('teacher/students','GET',undefined,{...teacher(1),Cookie:cookie})).status,401);
+ assert.equal((await call('teacher/account','POST',{username:'intruder',password:'1234'},{...teacher(1),Cookie:cookie})).status,401);
+});
+await test('Teacher and student logins share a unique namespace',async()=>{
+ assert.equal((await call('teacher/students','POST',{username:'teacher-one',displayCode:'X',password:'1234'},teacher(1))).status,409);
+ assert.equal((await call('teacher/account','POST',{username:'teacher-one',password:'1234'},teacher(2))).status,409);
+});
+await test('Wrong teacher password is rejected and never produces a session',async()=>{
+ const r=await call('auth/login','POST',{username:'teacher-one',password:'nope'});assert.equal(r.status,401);assert.equal(r.cookie,undefined);
+});
+await test('Teacher session remains scoped to its original student work',async()=>{
+ const list=await call('teacher/submissions','GET',undefined,{Cookie:teacherCookie});assert.equal(list.status,200);assert.equal(list.data.submissions[0].id,submission);
+ assert.equal((await call('teacher/students/'+second.id+'/access','POST',{active:false},{Cookie:teacherCookie})).status,404);
+});
+await test('Owner password recovery preserves work and revokes old teacher sessions',async()=>{
+ assert.equal((await call('teacher/account','POST',{username:'teacher-one',password:'8765'},teacher(1))).status,200);
+ assert.equal((await call('teacher/students','GET',undefined,{Cookie:teacherCookie})).status,401);
+ assert.equal((await call('auth/login','POST',{username:'teacher-one',password:'4321'})).status,401);
+ const r=await call('auth/login','POST',{username:'teacher-one',password:'8765'});assert.equal(r.status,200);teacherCookie=r.cookie;
+ assert.equal((await call('teacher/submissions','GET',undefined,{Cookie:teacherCookie})).data.submissions[0].id,submission);
+});
+await test('Teacher logout revokes its server session',async()=>{
+ assert.equal((await call('teacher/logout','POST',{}, {Cookie:teacherCookie})).status,200);
+ assert.equal((await call('teacher/me','GET',undefined,{Cookie:teacherCookie})).status,401);
+});
+await test('Expired teacher sessions are rejected',async()=>{
+ const r=await call('auth/login','POST',{username:'teacher-one',password:'8765'});sql.exec('UPDATE portal_teacher_sessions SET expires_at=1');
+ assert.equal((await call('teacher/me','GET',undefined,{Cookie:r.cookie})).status,401);
+});
 await test('Repeated wrong passwords are rate limited',async()=>{for(let i=0;i<10;i++)assert.equal((await call('student/login','POST',{username:'nonexistent',password:'wrong-password'})).status,401);assert.equal((await call('student/login','POST',{username:'nonexistent',password:'wrong-password'})).status,429);});
 fs.writeFileSync(new URL('../docs/portal-test-results.json',import.meta.url),JSON.stringify({date:new Date().toISOString(),passed,total:passed,scope:'Node Request/Response + WebCrypto + real SQLite in-memory adapter; not browser or live D1 tests; no real students.'},null,2));
 console.log(`${passed}/${passed} server tests passed`);

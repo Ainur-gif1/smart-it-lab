@@ -20,3 +20,13 @@ export const submissions = sqliteTable('portal_submissions', {
   submittedAt: text('submitted_at').notNull(), reviewedAt: text('reviewed_at')
 }, t => [uniqueIndex('submission_attempt_unique').on(t.studentId, t.assignmentId, t.attemptId), index('submissions_teacher_idx').on(t.teacherId, t.submittedAt), index('submissions_student_idx').on(t.studentId)]);
 export const loginLimits = sqliteTable('portal_login_limits', { key: text('key').primaryKey(), failures: integer('failures').notNull(), windowStart: integer('window_start').notNull() });
+export const teachers = sqliteTable('portal_teachers', {
+  id: text('id').primaryKey(), username: text('username').notNull().unique(), passwordHash: text('password_hash').notNull(),
+  active: integer('active').notNull().default(1), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull()
+});
+export const teacherSessions = sqliteTable('portal_teacher_sessions', {
+  tokenHash: text('token_hash').primaryKey(), teacherId: text('teacher_id').notNull().references(() => teachers.id,{onDelete:'cascade'}), expiresAt: integer('expires_at').notNull()
+}, t => [index('teacher_sessions_owner_idx').on(t.teacherId)]);
+export const loginNames = sqliteTable('portal_login_names', {
+  username: text('username').primaryKey(), role: text('role').notNull(), ownerId: text('owner_id').notNull()
+});
