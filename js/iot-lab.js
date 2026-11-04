@@ -17,7 +17,7 @@
       controller: null, modules: [], focusId: null,
       mistakes: 0, hints: 0,
       checked: false, lastCheck: null,
-      simValue: project.control.initial, observed: { on: false, off: false },
+      trace: [], simValue: project.control.initial, observed: { on: false, off: false },
       completed: false, finished: false, result: null,
       startedAt: Date.now(), endedAt: null, demo: false
     });
@@ -42,6 +42,7 @@
     state.running = false; state.completed = false;
     state.checked = false;
     state.lastCheck = null;
+    state.trace = [];
     state.observed = { on: false, off: false };
     state.simValue = project().control.initial;
     if (!state.finished) state.result = null;
@@ -113,6 +114,7 @@
 
   function observe() {
     if (!state.checked || !state.running) return;
+    if (!state.trace.includes(state.simValue) && state.trace.length < 128) state.trace.push(state.simValue);
     if (outputOn()) state.observed.on = true;
     else state.observed.off = true;
   }
@@ -153,7 +155,7 @@
       state.startedAt = Date.now(); state.endedAt = null;
     }
     state.completed = false; state.result = null;
-    state.observed = { on: false, off: false }; state.simValue = project().control.initial;
+    state.trace = []; state.observed = { on: false, off: false }; state.simValue = project().control.initial;
     state.running = true; observe(); render(); return true;
   }
 
@@ -166,6 +168,7 @@
   function saveAttempt(score, completed) {
     if (state.demo) return;
     SIL.Progress.recordAttempt(state.projectId, {
+      snapshot: { type: 'iot', controller: state.controller, modules: state.modules.map(m => ({...m})), values: state.trace.slice() },
       attemptId: state.attemptId, checkResult: { ok: analysis().ok, issueCodes: analysis().errors.map(e => e.code) },
       score: score.total, completed, mistakes: state.mistakes, hints: state.hints,
       timeSec: Math.round(elapsedSec()), mode: state.mode

@@ -808,3 +808,4 @@
     if (I18N[lang]) currentLang = lang;
   };
 })(typeof window !== "undefined" ? window : globalThis);
+

@@ -162,6 +162,7 @@
     if (!state.demo && !state.recorded) {
       state.recorded = true;
       SIL.Progress.recordAttempt(state.taskId, {
+        snapshot: { type: 'pc', build: {...state.build}, launched: true },
         attemptId: state.attemptId, checkResult: { ok: a.postOk, issueCodes: a.errors.map(e => e.code) },
         score: score.total, completed: a.taskOk, mistakes: state.mistakes, hints: state.hints,
         timeSec: Math.round(elapsedSec()), mode: state.mode

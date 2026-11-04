@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   const SIL = window.SIL = window.SIL || {};
-  const KEY = 'smartitlab.classroom.v2';
+  const KEY = 'smartitlab.classroom.v2' + (window.SIL_SERVER_USER ? '.' + window.SIL_SERVER_USER.id : '');
   const TASKS = [
     { id: 'pc-office', lab: 'pc', titleKey: 'pc.tasks.office.title', maxScore: 100 },
     { id: 'pc-gaming', lab: 'pc', titleKey: 'pc.tasks.gaming.title', maxScore: 100 },
@@ -29,6 +29,7 @@
     if (!Number.isFinite(a.score) || a.score < 0 || a.score > 100 || typeof a.completed !== 'boolean') return false;
     if (!['mistakes', 'hints', 'timeSec'].every(k => Number.isSafeInteger(a[k]) && a[k] >= 0 && a[k] <= 31536000)) return false;
     if (!a.checkResult || typeof a.checkResult.ok !== 'boolean' || !Array.isArray(a.checkResult.issueCodes) || a.checkResult.issueCodes.length > 100 || !a.checkResult.issueCodes.every(c => shortText(c, 80))) return false;
+    if (a.snapshot !== undefined && (!a.snapshot || typeof a.snapshot !== 'object' || JSON.stringify(a.snapshot).length > 30000)) return false;
     if (a.report !== undefined && !validateReport(a.report)) return false;
     return true;
   }
@@ -38,6 +39,7 @@
       id: a.id, taskId: a.taskId, studentCode: a.studentCode, date: a.date, mode: a.mode,
       score: a.score, completed: a.completed, mistakes: a.mistakes, hints: a.hints, timeSec: a.timeSec,
       checkResult: { ok: a.checkResult.ok, issueCodes: a.checkResult.issueCodes.slice() },
+      ...(a.snapshot ? { snapshot: clone(a.snapshot) } : {}),
       ...(a.report ? { report: { evidence: a.report.evidence, fixes: a.report.fixes, conclusion: a.report.conclusion } } : {})
     };
   }
@@ -89,7 +91,7 @@
     const id = r.attemptId || newAttemptId();
     const existing = data.attempts.find(a => a.id === id);
     if (existing) return clone(existing);
-    const a = normalizeAttempt({ id, taskId, studentCode: data.studentCode, date: new Date().toISOString(), mode: r.mode, score: r.score, completed: !!r.completed, mistakes: r.mistakes, hints: r.hints, timeSec: Math.round(r.timeSec), checkResult: r.checkResult || { ok: !!r.completed, issueCodes: [] } });
+    const a = normalizeAttempt({ id, taskId, studentCode: data.studentCode, date: new Date().toISOString(), mode: r.mode, score: r.score, completed: !!r.completed, mistakes: r.mistakes, hints: r.hints, timeSec: Math.round(r.timeSec), snapshot: r.snapshot, checkResult: r.checkResult || { ok: !!r.completed, issueCodes: [] } });
     data.attempts.push(a); persist(); notify(); return clone(a);
   }
   function setStudentId(value) { loadData(); data.studentCode = String(value).trim().slice(0, 60); persist(); document.dispatchEvent(new CustomEvent('sil:student')); }
