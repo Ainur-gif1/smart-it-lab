@@ -1,10 +1,13 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
+import vm from 'node:vm';
+import {createRequire} from 'node:module';
+const {makeApp,wire}=createRequire(import.meta.url)('./classroom.test.cjs');
 import assert from 'node:assert/strict';
 import { handleApi,gradeAttempt } from '../lib/portal/core.mjs';
 const sql=new DatabaseSync(':memory:');for(const name of fs.readdirSync(new URL('../drizzle/',import.meta.url)).filter(x=>x.endsWith('.sql')).sort())sql.exec(fs.readFileSync(new URL('../drizzle/'+name,import.meta.url),'utf8'));
 const DB={prepare(query){let args=[];return {bind(...a){args=a;return this;},async first(){return sql.prepare(query).get(...args)||null;},async all(){return {results:sql.prepare(query).all(...args)};},async run(){return sql.prepare(query).run(...args);}};},async batch(statements){sql.exec('BEGIN');try{const r=[];for(const s of statements)r.push(await s.run());sql.exec('COMMIT');return r;}catch(e){sql.exec('ROLLBACK');throw e;}}};
-const env={DB,AUTH_PEPPER:'test-only-pepper-abcdefghijklmnopqrstuvwxyz-123456',TEACHER_EMAILS:'teacher1@example.test,teacher2@example.test'};
+const env={DB,AUTH_PEPPER:'test-only-pepper-abcdefghijklmnopqrstuvwxyz-123456',TEACHER_EMAILS:'teacher1@example.test,teacher2@example.test,teacher3@example.test'};
 const teacher=n=>({'oai-authenticated-user-id':'teacher-'+n,'oai-authenticated-user-email':`teacher${n}@example.test`});
 async function call(path,method='GET',data,headers={}){const r=await handleApi(new Request('https://lab.example/api/'+path,{method,headers:{Origin:'https://lab.example','Content-Type':'application/json',...headers},body:data===undefined?undefined:JSON.stringify(data)}),env);return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0],headers:r.headers};}
 let passed=0;async function test(name,fn){await fn();passed++;console.log('PASS '+name);}
@@ -94,6 +97,38 @@ await test('Active student conflict is explicit; leaving student restores owner 
  const leave=await call('auth/leave-student','POST',{},headers);assert.equal(leave.status,200);assert(leave.headers.get('set-cookie').includes('Max-Age=0'));
  assert.equal((await call('student/me','GET',undefined,{Cookie:r.cookie})).status,401);
  assert.equal((await call('teacher/account','GET',undefined,headers)).status,200);
+});
+let flowCookie,motionAssignment;
+await test('Real frontend records from all six labs in both modes submit and appear to their teacher',async()=>{
+ const student=await call('teacher/students','POST',{username:'flow-student',displayCode:'FLOW',password:'1234'},teacher(3));assert.equal(student.status,201);
+ const login=await call('student/login','POST',{username:'flow-student',password:'1234'});
+ const changed=await call('student/password','POST',{oldPassword:'1234',newPassword:'5678'},{Cookie:login.cookie});flowCookie=changed.cookie;
+ const builds={'pc-office':['mb-a','cpu-r5','cool-box','ram-8','ssd-256','psu-400'],'pc-gaming':['mb-a','cpu-r5','cool-box','ram-16','gpu-gaming','ssd-1tb','psu-550'],'pc-work':['mb-b','cpu-i7','cool-tower','ram-32','ssd-1tb','psu-550']};
+ for(const mode of ['learn','exam'])for(const taskId of ['pc-office','pc-gaming','pc-work','iot-light','iot-temp','iot-motion']){
+  const created=await call('teacher/assignments','POST',{taskId,mode,title:'Frontend flow',instruction:''},teacher(3));assert.equal(created.status,201);
+  const app=makeApp();
+  if(taskId.startsWith('pc-')){const B=app.S.PcBuilder;B.switchTask(taskId);B.switchMode(mode);for(const id of builds[taskId])B.install(id);await B.launch();}
+  else{const I=app.S.IotLab;I.switchMode(mode);wire(app,taskId);I.startSimulation();I.setSimValue(taskId==='iot-light'?290:taskId==='iot-temp'?29:true);if(mode==='exam')I.finishExam();}
+  const row=JSON.parse(JSON.stringify(app.S.Progress.attempts()[0]));row.report={evidence:'Құрылғының екі күйі тексерілді',fixes:'Тексерілген схема',conclusion:'Оқу нәтижесі'};
+  const sent=await call('student/submissions','POST',{assignmentId:created.data.id,attempt:row},{Cookie:flowCookie});assert.equal(sent.status,201,JSON.stringify(sent.data));assert.equal(sent.data.completed,true);assert.equal(sent.data.simulatorScore,100);
+  if(taskId==='iot-motion'&&mode==='exam')motionAssignment=created.data.id;
+ }
+ const list=(await call('teacher/submissions','GET',undefined,teacher(3))).data.submissions;assert.equal(list.length,12);assert(list.every(x=>x.completed&&x.simulatorScore===100));
+});
+await test('Exam with unwired GPIO is submitted as incomplete, preserving diagnostic and deduplication',async()=>{
+ const app=makeApp(),I=app.S.IotLab;I.switchProject('iot-motion');I.switchMode('exam');I.addComponent('esp32');I.addComponent('pir');I.addComponent('buzzer');I.finishExam();
+ const row=JSON.parse(JSON.stringify(app.S.Progress.attempts()[0]));row.report={evidence:'Қосылмаған пиндер',fixes:'GPIO таңдалмады',conclusion:'Тапсырма аяқталмаған'};assert.equal(row.snapshot.modules[0].pin,null);
+ const sent=await call('student/submissions','POST',{assignmentId:motionAssignment,attempt:row},{Cookie:flowCookie});assert.equal(sent.status,201,JSON.stringify(sent.data));assert.equal(sent.data.completed,false);assert(sent.data.simulatorScore<100);
+ const duplicate=await call('student/submissions','POST',{assignmentId:motionAssignment,attempt:row},{Cookie:flowCookie});assert.equal(duplicate.data.id,sent.data.id);assert.equal(duplicate.data.duplicate,true);
+ const detail=(await call('teacher/submissions/'+sent.data.id,'GET',undefined,teacher(3))).data.submission;assert(detail.checkResult.issueCodes.includes('notWired'));assert.equal(detail.snapshot.modules[0].pin,null);
+});
+await test('Submission chooser selects newest attempt and switches when another is completed',async()=>{
+ const app=makeApp(),I=wire(app);I.startSimulation();I.setSimValue(290);const first=app.S.Progress.attempts()[0].id;I.restartSimulation();I.setSimValue(290);const second=app.S.Progress.attempts()[1].id;
+ app.context.SIL_PORTAL={student:{id:'test-flow',displayCode:'FLOW'},assignment:{id:'test-assignment',taskId:'iot-light',mode:'learn',title:'Test',instruction:''}};
+ let initialize;const add=app.context.document.addEventListener;app.context.document.addEventListener=(event,fn)=>event==='DOMContentLoaded'?initialize=fn:add(event,fn);
+ vm.runInContext(fs.readFileSync(new URL('../public/portal/bridge.js',import.meta.url),'utf8'),app.context);initialize();
+ const select=app.get('portal-attempt');assert.equal(select.value,second);select.value=first;app.context.document.dispatchEvent({type:'sil:progress'});assert.equal(select.value,first);
+ I.restartSimulation();I.setSimValue(290);const newest=app.S.Progress.attempts().at(-1).id;assert.notEqual(newest,second);assert.equal(select.value,newest);
 });
 await test('Repeated wrong passwords are rate limited',async()=>{for(let i=0;i<10;i++)assert.equal((await call('student/login','POST',{username:'nonexistent',password:'wrong-password'})).status,401);assert.equal((await call('student/login','POST',{username:'nonexistent',password:'wrong-password'})).status,429);});
 fs.writeFileSync(new URL('../docs/portal-test-results.json',import.meta.url),JSON.stringify({date:new Date().toISOString(),passed,total:passed,scope:'Node Request/Response + WebCrypto + real SQLite in-memory adapter; not browser or live D1 tests; no real students.'},null,2));

@@ -40,7 +40,8 @@ function wire(app,id='iot-light'){
   I.setPin(p.sensor,app.S.IotEngine.RECOMMENDED_PINS[p.sensor].pin);I.setPin(p.output,app.S.IotEngine.RECOMMENDED_PINS[p.output].pin);return I;
 }
 function same(actual,expected){assert.equal(JSON.stringify(actual),JSON.stringify(expected));}
-(async()=>{
+module.exports = {makeApp,wire};
+if (require.main === module) (async()=>{
 await test('Complete application initializes with Kazakh as the default',()=>{const a=makeApp();assert.equal(a.S.getLang(),'kz');assert.equal(a.context.document.documentElement.attrs.lang,undefined);assert.equal(a.context.document.documentElement.lang,'kk');assert.equal(a.get('body').classList!==undefined,true);});
 await test('Valid light circuit validates, starts, stops and resumes',()=>{const a=makeApp(),I=wire(a);assert(I.checkScheme().ok);assert(!I.state.running);assert(I.startSimulation());assert(I.state.running);assert.equal(a.get('iot-sim-status').textContent,a.S.t('classroom.simRunning'));assert(I.stopSimulation());assert(!I.state.running);const before=I.state.simValue;I.setSimValue(290);assert.equal(I.state.simValue,before);assert(I.startSimulation());});
 await test('Light 290 ON, 300 OFF and 310 OFF; once-only result recording',()=>{const a=makeApp(),I=wire(a);I.startSimulation();I.setSimValue(290);assert(a.get('iot-sim-readout').innerHTML.includes(': ON'));I.setSimValue(300);assert(a.get('iot-sim-readout').innerHTML.includes(': OFF'));I.setSimValue(310);assert(a.get('iot-sim-readout').innerHTML.includes(': OFF'));assert.equal(a.S.Progress.attempts().length,1);I.setSimValue(290);I.setSimValue(310);assert.equal(a.S.Progress.attempts().length,1);});
