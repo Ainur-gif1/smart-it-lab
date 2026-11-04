@@ -48,7 +48,7 @@ await test('Student username/password routes to student; role parameter cannot e
 });
 await test('Student session cannot inherit teacher identity on a shared browser',async()=>{
  assert.equal((await call('teacher/students','GET',undefined,{...teacher(1),Cookie:cookie})).status,401);
- assert.equal((await call('teacher/account','POST',{username:'intruder',password:'1234'},{...teacher(1),Cookie:cookie})).status,401);
+ assert.equal((await call('teacher/account','POST',{username:'intruder',password:'1234'},{...teacher(1),Cookie:cookie})).status,409);
 });
 await test('Teacher and student logins share a unique namespace',async()=>{
  assert.equal((await call('teacher/students','POST',{username:'teacher-one',displayCode:'X',password:'1234'},teacher(1))).status,409);
@@ -75,6 +75,25 @@ await test('Teacher logout revokes its server session',async()=>{
 await test('Expired teacher sessions are rejected',async()=>{
  const r=await call('auth/login','POST',{username:'teacher-one',password:'8765'});sql.exec('UPDATE portal_teacher_sessions SET expires_at=1');
  assert.equal((await call('teacher/me','GET',undefined,{Cookie:r.cookie})).status,401);
+});
+await test('Stale, malformed or expired student cookie does not block verified owner setup',async()=>{
+ for(const value of ['invalid','a'.repeat(64)]){
+  const headers={...teacher(1),Cookie:'__Host-sil_student='+value};
+  const r=await call('teacher/account','GET',undefined,headers);assert.equal(r.status,200);assert(r.headers.get('set-cookie').includes('Max-Age=0'));
+  assert.equal((await call('teacher/me','GET',undefined,headers)).status,200);
+ }
+ const r=await call('auth/login','POST',{username:'student-one',password:'9012'});sql.exec('UPDATE portal_sessions SET expires_at=1');
+ assert.equal((await call('teacher/account','GET',undefined,{...teacher(1),Cookie:r.cookie})).status,200);
+ assert.equal((await call('teacher/account','GET',undefined,{Cookie:r.cookie})).status,401);
+});
+await test('Active student conflict is explicit; leaving student restores owner setup without another sign-in',async()=>{
+ const r=await call('auth/login','POST',{username:'student-one',password:'9012'});const headers={...teacher(1),Cookie:r.cookie};
+ const blocked=await call('teacher/account','GET',undefined,headers);assert.equal(blocked.status,409);assert.equal(blocked.data.code,'student_session_active');
+ assert.equal((await call('teacher/students','GET',undefined,headers)).status,401);
+ assert.equal((await call('auth/leave-student','POST',{}, {...headers,Origin:'https://evil.example'})).status,403);
+ const leave=await call('auth/leave-student','POST',{},headers);assert.equal(leave.status,200);assert(leave.headers.get('set-cookie').includes('Max-Age=0'));
+ assert.equal((await call('student/me','GET',undefined,{Cookie:r.cookie})).status,401);
+ assert.equal((await call('teacher/account','GET',undefined,headers)).status,200);
 });
 await test('Repeated wrong passwords are rate limited',async()=>{for(let i=0;i<10;i++)assert.equal((await call('student/login','POST',{username:'nonexistent',password:'wrong-password'})).status,401);assert.equal((await call('student/login','POST',{username:'nonexistent',password:'wrong-password'})).status,429);});
 fs.writeFileSync(new URL('../docs/portal-test-results.json',import.meta.url),JSON.stringify({date:new Date().toISOString(),passed,total:passed,scope:'Node Request/Response + WebCrypto + real SQLite in-memory adapter; not browser or live D1 tests; no real students.'},null,2));
