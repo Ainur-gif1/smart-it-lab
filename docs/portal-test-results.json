@@ -1,6 +1,6 @@
 {
-  "date": "2026-11-05T06:18:24.940Z",
-  "passed": 56,
-  "total": 56,
+  "date": "2026-11-05T14:03:28.518Z",
+  "passed": 59,
+  "total": 59,
   "scope": "Node Request/Response + WebCrypto + real SQLite in-memory adapter; not browser or live D1 tests; no real students."
 }
