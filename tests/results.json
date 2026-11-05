@@ -1,8 +1,8 @@
 {
-  "date": "2026-11-04T06:27:55.631Z",
+  "date": "2026-11-05T04:36:25.562Z",
   "scope": "Automated JavaScript engine and application tests with a lightweight DOM stub. Not a real-browser, mobile or student pilot test.",
-  "passed": 24,
-  "total": 24,
+  "passed": 25,
+  "total": 25,
   "tests": [
     {
       "name": "Complete application initializes with Kazakh as the default",
@@ -89,11 +89,15 @@
       "status": "PASS"
     },
     {
-      "name": "Report draft saves, exports with the attempt and rejects oversized values",
+      "name": "Conclusion-only draft saves, preserves legacy report fields and exports",
       "status": "PASS"
     },
     {
       "name": "All six bilingual lessons have no unresolved translation keys; exam omits steps",
+      "status": "PASS"
+    },
+    {
+      "name": "Touch controls assemble a PC, wire IoT, run the slider and remove a module without dragging",
       "status": "PASS"
     },
     {

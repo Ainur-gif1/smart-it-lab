@@ -308,7 +308,7 @@
       const cards = E.COMPONENTS.filter((c) => c.slot === slot).map((c) => {
         const selected = state.selectedId === c.id;
         const installed = state.build[c.slot] === c.id;
-        return `<div class="comp-card${selected ? " is-selected" : ""}${installed ? " is-installed" : ""}" data-comp="${c.id}" draggable="${!locked}">
+        return `<div class="comp-card${selected ? " is-selected" : ""}${installed ? " is-installed" : ""}" data-comp="${c.id}" draggable="${!locked && !window.matchMedia?.('(pointer: coarse)')?.matches}">
           <button type="button" class="comp-main" data-action="select" data-id="${c.id}" aria-pressed="${selected}" ${locked ? "disabled" : ""}>
             <span class="comp-icon">${icon(c.slot)}</span>
             <span class="comp-text">

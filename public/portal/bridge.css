@@ -1,3 +1,15 @@
 #portal-submission{position:relative;z-index:10;padding:16px 5%;background:#103e40;color:#fff;border-bottom:1px solid #26777a}#portal-submission a{color:#b7ffdc}#portal-submission .portal-row{display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap}#portal-submission p{margin:8px 0;font-size:13px}#portal-submission button,#portal-submission select{padding:10px 14px;border-radius:6px;min-height:44px;font:inherit}#portal-submission select{max-width:100%;color:#142d37}#portal-submission button{background:#b7ffdc;color:#103e40;cursor:pointer;border:0}#portal-submission button:disabled{opacity:.5}#portal-submit-status{color:#d9ffe8}.portal-assigned [data-open-demo],.portal-assigned [data-route="teacher"],.portal-assigned [data-mode],.portal-assigned #iot-project-tabs,.portal-assigned #pc-task-tabs{display:none!important}
 
 #portal-timer{display:inline-block;margin:10px 0;padding:9px 14px;border:1px solid #80d3b5;border-radius:8px;font-variant-numeric:tabular-nums;font-weight:700}#portal-timer.is-expired{background:#ffe6df;color:#822d22;border-color:#f9b9aa}
+
+/* Keep server deadlines while removing time counters from practical screens. */
+#portal-timer,.portal-assigned .metric:has(#pc-m-time),.portal-assigned .metric:has(#iot-m-time){display:none!important}
+.portal-assigned .metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:600px){.portal-assigned .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+@media(max-width:600px){
+ #portal-submission{padding:14px max(12px,env(safe-area-inset-left)) 14px max(12px,env(safe-area-inset-right))}
+ #portal-submission .portal-row{gap:10px;align-items:stretch}#portal-submission .portal-row>div,#portal-submission label{min-width:0;width:100%}
+ #portal-submission .portal-row>button{flex:1 1 140px}#portal-submission select{display:block;width:100%;min-width:0;margin-top:5px;font-size:16px}
+ #portal-submission a{display:inline-flex;align-items:center;min-height:44px}#portal-submission strong,#portal-submission p{overflow-wrap:anywhere}
+}

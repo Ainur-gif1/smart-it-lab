@@ -683,3 +683,23 @@ input[type="range"] { min-height: 44px; touch-action: pan-x; }
   .panel { border-color: #bbb; break-inside: avoid; }
   .report-facts dt, .lead, .note { color: #333 !important; }
 }
+
+/* Touch-first practical controls and narrow screens. */
+@media(max-width:600px),(pointer:coarse){
+ .btn,.btn-small,.comp-main,.slot-remove,.task-tab,.mode-switch button,.nav-toggle{min-height:44px;touch-action:manipulation}
+ .slot-remove{min-width:44px;width:44px;height:44px}
+ select,input[type="text"],input[type="number"],textarea{font-size:16px;min-height:44px}
+ .switch{min-height:48px}
+ .switch-track{height:32px}
+ .switch-track::after{top:5px}
+ input[type="range"]{min-height:48px}
+}
+@media(max-width:600px){
+ main{padding:12px}.topbar{padding:10px 12px}.lab-toolbar,.toolbar-right{flex-wrap:wrap;gap:10px}
+ .lab-layout{gap:12px}.lab-left,.lab-center,.lab-right,.panel,.task-card{min-width:0;max-width:100%}
+ .modules{grid-template-columns:minmax(0,1fr)}.pin-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .pin-select{flex-direction:column;align-items:stretch}.pin-select select{width:100%}
+ .comp-card{flex-wrap:wrap}.comp-install{flex-basis:100%;width:100%;margin-top:4px}.comp-specs,.comp-name{overflow-wrap:anywhere}
+ .btn-row{flex-wrap:wrap}.lab-right .btn-row>.btn{flex:1 1 135px}.sim-label{line-height:1.6}
+ .cond{grid-template-columns:22px minmax(0,1fr) auto}.note,.lead,.task-card p{overflow-wrap:anywhere}
+}

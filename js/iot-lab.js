@@ -333,7 +333,7 @@
     const used = new Set([state.controller, ...state.modules.map((m) => m.id)]);
     els.palette.innerHTML = ["controller", "sensor", "output"].map((kind) => {
       const cards = E.COMPONENTS.filter((c) => c.kind === kind).map((c) => `
-        <div class="comp-card${used.has(c.id) ? " is-installed" : ""}${state.focusId === c.id ? " is-selected" : ""}" data-comp="${c.id}" draggable="${!locked}">
+        <div class="comp-card${used.has(c.id) ? " is-installed" : ""}${state.focusId === c.id ? " is-selected" : ""}" data-comp="${c.id}" draggable="${!locked && !window.matchMedia?.('(pointer: coarse)')?.matches}">
           <button type="button" class="comp-main" data-add="${c.id}" aria-label="${esc(t("iot.addTo", { name: E.compName(c.id) }))}" ${locked ? "disabled" : ""}>
             <span class="comp-icon">${icon(c.id)}</span>
             <span class="comp-text"><span class="comp-name">${esc(E.compName(c.id))}</span><span class="comp-specs">${esc(componentTags(c))}</span></span>
