@@ -15,3 +15,5 @@
  .intro h1,.card h2,.card h3,.assignment-row{overflow-wrap:anywhere}.assignment-row>div:last-child{display:flex;gap:8px;flex-wrap:wrap;width:100%}
  .assignment-row button{flex:1 1 130px}.login-screen main{padding-top:28px}.login-screen .login{margin-bottom:24px}
 }
+
+.password-settings summary{cursor:pointer;font-weight:700;min-height:44px;padding:10px 0}.password-settings form{max-width:480px;margin-top:16px}

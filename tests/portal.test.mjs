@@ -320,6 +320,24 @@ await test('Reopening restores a server saved partial circuit without resetting 
  const app=makeApp();wire(app);const d=timedAttempt('restore-partial');d.snapshot.modules[0].pin=null;d.finished=false;d.report={conclusion:''};app.context.SIL_PORTAL={student:{displayCode:'RESTORE'},assignment:{id:'restore',taskId:'iot-light',mode:'learn',title:'Restore',timeLimitMinutes:1}};
  let init;app.context.fetch=async()=>({ok:true,json:async()=>({timing:{serverNow:31000,deadlineAt:61000,timeLimitMinutes:1},draft:{revision:2,attempt:d}})});const add=app.context.document.addEventListener;app.context.document.addEventListener=(e,f)=>e==='DOMContentLoaded'?init=f:add(e,f);vm.runInContext(fs.readFileSync(new URL('../public/portal/bridge.js',import.meta.url),'utf8'),app.context);init();await new Promise(r=>setImmediate(r));assert.equal(app.S.IotLab.state.attemptId,d.id);assert.equal(app.S.IotLab.state.modules[0].pin,null);assert(app.get('portal-timer').textContent.includes('00:30'));assert.equal(app.get('main').inert,false);
 });
+await test('Teacher changes own password, preserves work and revokes every old session',async()=>{
+ await call('teacher/account','POST',{username:'own-teacher',password:'old4'},teacher(2));
+ const first=await call('auth/login','POST',{username:'own-teacher',password:'old4'}),secondSession=await call('auth/login','POST',{username:'own-teacher',password:'old4'});
+ assert.equal((await call('teacher/password','POST',{oldPassword:'wrong',newPassword:'next4'},{Cookie:first.cookie})).status,401);
+ for(const next of ['abc','old4'])assert.equal((await call('teacher/password','POST',{oldPassword:'old4',newPassword:next},{Cookie:first.cookie})).status,400);
+ const changed=await call('teacher/password','POST',{oldPassword:'old4',newPassword:'next4',teacherId:'teacher-1'},{Cookie:first.cookie});assert.equal(changed.status,200);assert(changed.cookie);assert(!JSON.stringify(changed.data).includes('password'));
+ assert.equal((await call('teacher/me','GET',undefined,{Cookie:first.cookie})).status,401);assert.equal((await call('teacher/me','GET',undefined,{Cookie:secondSession.cookie})).status,401);assert.equal((await call('teacher/me','GET',undefined,{Cookie:changed.cookie})).status,200);
+ assert.equal((await call('auth/login','POST',{username:'own-teacher',password:'old4'})).status,401);assert.equal((await call('auth/login','POST',{username:'own-teacher',password:'next4'})).status,200);
+ assert.equal((await call('teacher/students','GET',undefined,{Cookie:changed.cookie})).data.students[0].id,second.id);
+ assert.equal((await call('teacher/password','POST',{oldPassword:'next4',newPassword:'evil'},{Cookie:flowCookie})).status,401);
+});
+await test('A returning student can change own password and continue using the new session',async()=>{
+ const changed=await call('student/password','POST',{oldPassword:'5678',newPassword:'new4'},{Cookie:flowCookie});assert.equal(changed.status,200);assert.equal((await call('student/me','GET',undefined,{Cookie:flowCookie})).status,401);flowCookie=changed.cookie;assert.equal((await call('student/me','GET',undefined,{Cookie:flowCookie})).status,200);
+ assert.equal((await call('student/password','POST',{oldPassword:'5678',newPassword:'xxxx'},{Cookie:flowCookie})).status,401);
+});
+await test('Teacher and returning student pages both expose current, new and repeated password fields',async()=>{
+ for(const role of ['student','teacher']){const app=makeApp();app.get('[data-portal-role]').dataset.portalRole=role;app.context.fetch=async path=>({ok:true,json:async()=>path.endsWith('/me')?(role==='student'?{student:{displayCode:'S',mustChangePassword:false}}:{teacher:{configured:true}}):path.endsWith('/students')?{students:[]}:path.endsWith('/assignments')?{assignments:[]}:{submissions:[]}});vm.runInContext(fs.readFileSync(new URL('../public/portal/app.js',import.meta.url),'utf8'),app.context);await new Promise(r=>setImmediate(r));const html=app.get('portal-content').innerHTML;assert(html.includes('id="own-password"'));for(const field of ['oldPassword','newPassword','confirmPassword'])assert(html.includes('name="'+field+'"'));assert(html.includes('minlength="4"'));}
+});
 await test('Repeated wrong passwords are rate limited',async()=>{for(let i=0;i<10;i++)assert.equal((await call('student/login','POST',{username:'nonexistent',password:'wrong-password'})).status,401);assert.equal((await call('student/login','POST',{username:'nonexistent',password:'wrong-password'})).status,429);});
 fs.writeFileSync(new URL('../docs/portal-test-results.json',import.meta.url),JSON.stringify({date:new Date().toISOString(),passed,total:passed,scope:'Node Request/Response + WebCrypto + real SQLite in-memory adapter; not browser or live D1 tests; no real students.'},null,2));
 console.log(`${passed}/${passed} server tests passed`);
