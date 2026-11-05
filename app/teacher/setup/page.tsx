@@ -1,2 +1,2 @@
-import {PortalPage} from '../../../lib/portal/page';
-export default function Page(){return <PortalPage role="setup"/>;}
+import {redirect} from 'next/navigation';
+export default function Page(){redirect('/login');}
