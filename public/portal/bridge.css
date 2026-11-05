@@ -2,8 +2,8 @@
 
 #portal-timer{display:inline-block;margin:10px 0;padding:9px 14px;border:1px solid #80d3b5;border-radius:8px;font-variant-numeric:tabular-nums;font-weight:700}#portal-timer.is-expired{background:#ffe6df;color:#822d22;border-color:#f9b9aa}
 
-/* Keep server deadlines while removing time counters from practical screens. */
-#portal-timer,.portal-assigned .metric:has(#pc-m-time),.portal-assigned .metric:has(#iot-m-time){display:none!important}
+/* Show the assignment countdown; keep the old elapsed counters hidden. */
+.portal-assigned .metric:has(#pc-m-time),.portal-assigned .metric:has(#iot-m-time){display:none!important}
 .portal-assigned .metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media(max-width:600px){.portal-assigned .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
