@@ -3,3 +3,5 @@
 .role-links{display:flex;justify-content:center;gap:24px;flex-wrap:wrap;margin:0 auto 30px}.role-links a{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px 24px;text-decoration:none;font-weight:600}
 
 .login-screen .top nav,.login-screen .brand span,.login-screen footer{display:none}.login-screen main{padding-top:56px}.login-screen .login h1{font-size:26px;letter-spacing:0;margin:0 0 24px}.login-screen .login{margin-top:16px}.login-screen form>button{margin-top:8px}
+
+.result-details{margin-top:16px;border-top:1px solid var(--line)}.result-issues{list-style:none;padding:0}.result-issues li{padding:14px 16px;margin:10px 0;border-radius:8px;background:#fff2ed;border-left:3px solid #b74e32}.result-issues li.warning{background:#fff9e8;border-color:#b89023}.result-issues p{margin:6px 0}.result-issues .muted{font-size:13px}

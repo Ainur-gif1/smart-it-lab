@@ -130,6 +130,108 @@ await test('Submission chooser selects newest attempt and switches when another 
  const select=app.get('portal-attempt');assert.equal(select.value,second);select.value=first;app.context.document.dispatchEvent({type:'sil:progress'});assert.equal(select.value,first);
  I.restartSimulation();I.setSimValue(290);const newest=app.S.Progress.attempts().at(-1).id;assert.notEqual(newest,second);assert.equal(select.value,newest);
 });
+let timedAssignment;
+const timedAttempt=id=>({...structuredClone(attempt),id});
+await test('Teacher validates duration and exposes the configured time to students',async()=>{
+ for(const value of [0,-1,1.5,1441,'10',true])assert.equal((await call('teacher/assignments','POST',{taskId:'iot-light',mode:'learn',title:'Bad time',timeLimitMinutes:value},teacher(3))).status,400);
+ const made=await call('teacher/assignments','POST',{taskId:'iot-light',mode:'learn',title:'Timed task',timeLimitMinutes:1,latePolicy:'block'},teacher(3));assert.equal(made.status,201);timedAssignment=made.data.id;
+ const item=(await call('student/assignments','GET',undefined,{Cookie:flowCookie})).data.assignments.find(x=>x.id===timedAssignment);assert.equal(item.timeLimitMinutes,1);assert.equal(item.latePolicy,'block');assert.equal(item.startedAt,null);
+});
+await test('Timed work requires a server start and cannot start another teacher task',async()=>{
+ assert.equal((await call('student/submissions','POST',{assignmentId:timedAssignment,attempt:timedAttempt('before-start')},{Cookie:flowCookie})).data.code,'assignment_not_started');
+ assert.equal((await call('student/assignments/'+timedAssignment+'/timing','GET',undefined,{Cookie:flowCookie})).data.timing,null);
+ assert.equal((await call('student/assignments/'+timedAssignment+'/start','GET',undefined,{Cookie:flowCookie})).status,404);
+ assert.equal((await call('student/assignments/'+timedAssignment+'/start','POST',{})).status,401);
+ const foreign=(await call('teacher/assignments','POST',{taskId:'iot-light',mode:'learn',title:'Other teacher',timeLimitMinutes:1},teacher(1))).data.id;
+ assert.equal((await call('student/assignments/'+foreign+'/start','POST',{}, {Cookie:flowCookie})).status,404);
+});
+await test('Reopening a task cannot reset its timer or extend its deadline',async()=>{
+ const realNow=Date.now;let now=realNow();Date.now=()=>now;
+ try{
+  const first=(await call('student/assignments/'+timedAssignment+'/start','POST',{timeLimitMinutes:10000,deadlineAt:now+999999999},{Cookie:flowCookie})).data.timing;
+  assert.equal(first.deadlineAt,now+60000);assert.equal(first.timeLimitMinutes,1);
+  now+=10000;const second=(await call('student/assignments/'+timedAssignment+'/start','POST',{}, {Cookie:flowCookie})).data.timing;assert.equal(second.startedAt,first.startedAt);assert.equal(second.deadlineAt,first.deadlineAt);
+  const read=(await call('student/assignments/'+timedAssignment+'/timing','GET',undefined,{Cookie:flowCookie})).data.timing;assert.equal(read.deadlineAt,first.deadlineAt);assert.equal(read.serverNow,now);
+ }finally{Date.now=realNow;}
+});
+await test('Teacher can set time before start but cannot alter an already running limit',async()=>{
+ const id=(await call('teacher/assignments','POST',{taskId:'iot-light',mode:'learn',title:'Edit time'},teacher(3))).data.id;
+ assert.equal((await call('teacher/assignments/'+id,'PATCH',{timeLimitMinutes:5,latePolicy:'mark'},teacher(3))).status,200);
+ assert.equal((await call('teacher/assignments/'+id,'PATCH',{timeLimitMinutes:10},teacher(1))).status,404);
+ assert.equal((await call('teacher/assignments/'+timedAssignment,'PATCH',{timeLimitMinutes:10},teacher(3))).status,409);
+});
+await test('Submission at the exact deadline is accepted; later work is blocked; duplicate retry is safe',async()=>{
+ const deadline=sql.prepare('SELECT deadline_at FROM portal_assignment_runs WHERE student_id=? AND assignment_id=?').get(sql.prepare("SELECT id FROM portal_students WHERE username='flow-student'").get().id,timedAssignment).deadline_at;
+ const realNow=Date.now;let now=deadline;Date.now=()=>now;
+ try{
+  const payload={assignmentId:timedAssignment,attempt:timedAttempt('at-deadline')};const accepted=await call('student/submissions','POST',payload,{Cookie:flowCookie});assert.equal(accepted.status,201,JSON.stringify(accepted.data));assert.equal(accepted.data.isLate,false);
+  now++;const repeated=await call('student/submissions','POST',payload,{Cookie:flowCookie});assert.equal(repeated.data.id,accepted.data.id);assert.equal(repeated.data.duplicate,true);
+  const blocked=await call('student/submissions','POST',{assignmentId:timedAssignment,attempt:timedAttempt('after-deadline')},{Cookie:flowCookie});assert.equal(blocked.status,409);assert.equal(blocked.data.code,'deadline_passed');assert.equal(sql.prepare("SELECT count(*) AS n FROM portal_submissions WHERE attempt_id='after-deadline'").get().n,0);
+ }finally{Date.now=realNow;}
+});
+await test('Late-accept policy records server time, marks lateness and ignores forged client deadlines',async()=>{
+ const id=(await call('teacher/assignments','POST',{taskId:'iot-light',mode:'learn',title:'Accept late',timeLimitMinutes:1,latePolicy:'mark'},teacher(3))).data.id;
+ const realNow=Date.now;let now=realNow();Date.now=()=>now;
+ try{
+  const timing=(await call('student/assignments/'+id+'/start','POST',{}, {Cookie:flowCookie})).data.timing;now=timing.deadlineAt+1000;
+  const row=timedAttempt('late-marked');row.timeSec=0;const sent=await call('student/submissions','POST',{assignmentId:id,attempt:row,deadlineAt:now+9999999,latePolicy:'block'},{Cookie:flowCookie});assert.equal(sent.status,201,JSON.stringify(sent.data));assert.equal(sent.data.isLate,true);assert.equal(sent.data.lateBySec,1);assert.equal(sent.data.simulatorScore,100);
+  const teacherWork=(await call('teacher/submissions/'+sent.data.id,'GET',undefined,teacher(3))).data.submission;assert.equal(teacherWork.serverDurationSec,61);assert.equal(teacherWork.deadlineAt,timing.deadlineAt);assert.equal(teacherWork.metrics.timeSec,0);assert.equal(teacherWork.isLate,true);
+  const studentWork=(await call('student/submissions','GET',undefined,{Cookie:flowCookie})).data.submissions.find(x=>x.id===sent.data.id);assert.equal(studentWork.isLate,true);
+ }finally{Date.now=realNow;}
+});
+await test('Students receive independent start times for the same assignment',async()=>{
+ await call('teacher/students','POST',{username:'clock-other',displayCode:'CLOCK',password:'1234'},teacher(3));const login=await call('student/login','POST',{username:'clock-other',password:'1234'});const changed=await call('student/password','POST',{oldPassword:'1234',newPassword:'5678'},{Cookie:login.cookie});
+ const own=(await call('student/assignments/'+timedAssignment+'/start','POST',{}, {Cookie:changed.cookie})).data.timing;assert.equal(own.expired,false);assert.equal(own.deadlineAt-Date.parse(own.startedAt),60000);assert(own.deadlineAt>own.serverNow);
+ const flowRun=sql.prepare("SELECT r.* FROM portal_assignment_runs r JOIN portal_students s ON s.id=r.student_id WHERE s.username='flow-student' AND r.assignment_id=?").get(timedAssignment);assert.notEqual(own.startedAt,flowRun.started_at);
+});
+await test('Countdown uses server time and blocks only the configured late policy',async()=>{
+ for(const latePolicy of ['block','mark']){
+  const app=makeApp(),I=wire(app);I.startSimulation();I.setSimValue(290);
+  app.context.SIL_PORTAL={student:{id:'clock',displayCode:'CLOCK'},assignment:{id:'clock-task',taskId:'iot-light',mode:'learn',title:'Clock',instruction:'',timeLimitMinutes:1,latePolicy}};
+  let mono=0,tick,initialize;app.context.performance={now:()=>mono};app.context.setInterval=fn=>{tick=fn;};app.context.fetch=async()=>({ok:true,json:async()=>({timing:{startedAt:new Date(1000).toISOString(),deadlineAt:61000,serverNow:1000,timeLimitMinutes:1,latePolicy}})});
+  const add=app.context.document.addEventListener;app.context.document.addEventListener=(event,fn)=>event==='DOMContentLoaded'?initialize=fn:add(event,fn);
+  vm.runInContext(fs.readFileSync(new URL('../public/portal/bridge.js',import.meta.url),'utf8'),app.context);initialize();assert.equal(app.get('main').inert,true);
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(app.get('main').inert,false);assert(app.get('portal-timer').textContent.includes('01:00'));
+  mono=59000;tick();assert(app.get('portal-timer').textContent.includes('00:01'));
+  mono=60001;tick();assert(app.get('portal-timer').textContent.includes('00:00'));assert.equal(app.get('portal-send').disabled,latePolicy==='block');
+ }
+});
+await test('Only a conclusion is required; the teacher sees it and empty text is rejected',async()=>{
+ const id=(await call('teacher/assignments','POST',{taskId:'iot-light',mode:'learn',title:'Conclusion only'},teacher(3))).data.id;
+ const row=timedAttempt('conclusion-only');row.report={conclusion:'Тапсырма шарттары орындалды.'};const sent=await call('student/submissions','POST',{assignmentId:id,attempt:row},{Cookie:flowCookie});assert.equal(sent.status,201,JSON.stringify(sent.data));
+ const details=(await call('teacher/submissions/'+sent.data.id,'GET',undefined,teacher(3))).data.submission;assert.equal(details.report.conclusion,row.report.conclusion);assert.equal(details.report.evidence,'');assert.equal(details.report.fixes,'');
+ row.id='empty-conclusion';row.report.conclusion='  ';assert.equal((await call('student/submissions','POST',{assignmentId:id,attempt:row},{Cookie:flowCookie})).status,400);
+});
+await test('Teacher time controls render and student Start calls the server before entering the lab',async()=>{
+ const task={id:'ui-time-task',taskId:'iot-light',title:'Timed UI',instruction:'',mode:'learn',active:1,timeLimitMinutes:15,latePolicy:'block',startedAt:null,deadlineAt:null};
+ const teacherApp=makeApp();teacherApp.get('[data-portal-role]').dataset.portalRole='teacher';
+ teacherApp.context.fetch=async path=>({ok:true,json:async()=>path.endsWith('/me')?{teacher:{username:'teacher',configured:true}}:path.endsWith('/students')?{students:[]}:path.endsWith('/assignments')?{assignments:[task]}:{submissions:[]}});
+ vm.runInContext(fs.readFileSync(new URL('../public/portal/app.js',import.meta.url),'utf8'),teacherApp.context);await new Promise(resolve=>setImmediate(resolve));
+ const html=teacherApp.get('portal-content').innerHTML;assert(html.includes('name="timeLimitMinutes"'));assert(html.includes('name="latePolicy"'));assert(html.includes('15 минут'));assert(html.includes('data-time="ui-time-task"'));
+ const studentApp=makeApp(),calls=[];let opened;studentApp.get('[data-portal-role]').dataset.portalRole='student';studentApp.context.location.assign=url=>{opened=url;};
+ studentApp.context.fetch=async(path,options)=>{calls.push({path,options});return {ok:true,json:async()=>path.endsWith('/me')?{student:{id:'ui-student',username:'ui',displayCode:'UI',groupCode:'',mustChangePassword:false}}:path.endsWith('/assignments')?{assignments:[task]}:path.endsWith('/submissions')?{submissions:[]}:{timing:{}}};};
+ vm.runInContext(fs.readFileSync(new URL('../public/portal/app.js',import.meta.url),'utf8'),studentApp.context);await new Promise(resolve=>setImmediate(resolve));assert(studentApp.get('portal-content').innerHTML.includes('data-start="ui-time-task"'));
+ await studentApp.get('portal-content').onclick({target:{dataset:{start:'ui-time-task'},disabled:false}});assert.equal(opened,'/lab?assignment=ui-time-task');assert(calls.some(x=>x.path==='/api/student/assignments/ui-time-task/start'&&x.options.method==='POST'));
+});
+await test('Grading explains concrete GPIO, socket, DDR, cooling and power errors in Kazakh',async()=>{
+ const base={motherboard:'mb-a',cpu:'cpu-r5',cooler:'cool-box',ram:'ram-16',gpu:'gpu-gaming',storage:'ssd-1tb',psu:'psu-550'};
+ for(const [change,code] of [[{cpu:'cpu-i5'},'socket'],[{ram:'ram-32d5'},'ram'],[{cpu:'cpu-r7'},'cooler'],[{cpu:'cpu-r7',gpu:'gpu-power',psu:'psu-400'},'psu']]){
+  const graded=gradeAttempt({...timedAttempt('diagnostic-pc'),taskId:'pc-gaming',snapshot:{type:'pc',build:{...base,...change},launched:true}});
+  const issue=graded.check.issues.find(x=>x.code===code);assert(issue);assert(issue.location.length>0);assert(!issue.message.includes('{'));assert(!issue.message.startsWith('pc.'));assert(issue.nextStep.length>10);assert(graded.check.criteria.some(x=>!x.passed));
+ }
+ const gpio=gradeAttempt({...timedAttempt('diagnostic-gpio'),snapshot:{type:'iot',controller:'esp32',modules:[{id:'light',pin:'GPIO34'},{id:'led',pin:'GPIO35'}],values:[290,300]}});
+ const issue=gpio.check.issues.find(x=>x.code==='inputOnly');assert(issue.location.includes('GPIO 35'));assert(issue.message.includes('тек кіріс'));assert(issue.nextStep.includes('GPIO'));
+ const observed=gradeAttempt({...timedAttempt('one-state'),snapshot:{type:'iot',controller:'esp32',modules:[{id:'light',pin:'GPIO34'},{id:'led',pin:'GPIO2'}],values:[290]}});assert(observed.check.issues.some(x=>x.code==='notObserved_off'));
+});
+await test('Teacher and student both receive the saved result with exact error location and criteria',async()=>{
+ const row={...timedAttempt('shared-diagnostic'),taskId:'iot-motion',mode:'exam',snapshot:{type:'iot',controller:'esp32',modules:[{id:'pir',pin:'GPIO25'},{id:'buzzer',pin:'GPIO35'}],values:[false,true]},report:{conclusion:'GPIO дұрыс таңдалмаған'}};
+ const sent=await call('student/submissions','POST',{assignmentId:motionAssignment,attempt:row},{Cookie:flowCookie});assert.equal(sent.status,201);assert.equal(sent.data.completed,false);
+ const teacherView=(await call('teacher/submissions/'+sent.data.id,'GET',undefined,teacher(3))).data.submission;
+ const studentView=(await call('student/submissions','GET',undefined,{Cookie:flowCookie})).data.submissions.find(x=>x.id===sent.data.id);
+ assert.deepEqual(studentView.checkResult,teacherView.checkResult);assert.equal(studentView.simulatorScore,teacherView.simulatorScore);assert(teacherView.checkResult.issues.some(x=>x.code==='inputOnly'&&x.location.includes('GPIO 35')));assert(teacherView.checkResult.criteria.some(x=>x.key==='wiring'&&!x.passed));
+ const oldCheck=JSON.stringify({ok:false,issueCodes:['inputOnly']});sql.prepare('UPDATE portal_submissions SET check_json=? WHERE id=?').run(oldCheck,sent.data.id);
+ const legacy=(await call('teacher/submissions/'+sent.data.id,'GET',undefined,teacher(3))).data.submission;assert(legacy.checkResult.issues.some(x=>x.code==='inputOnly'));assert.equal(sql.prepare('SELECT check_json FROM portal_submissions WHERE id=?').get(sent.data.id).check_json,oldCheck);
+});
 await test('Repeated wrong passwords are rate limited',async()=>{for(let i=0;i<10;i++)assert.equal((await call('student/login','POST',{username:'nonexistent',password:'wrong-password'})).status,401);assert.equal((await call('student/login','POST',{username:'nonexistent',password:'wrong-password'})).status,429);});
 fs.writeFileSync(new URL('../docs/portal-test-results.json',import.meta.url),JSON.stringify({date:new Date().toISOString(),passed,total:passed,scope:'Node Request/Response + WebCrypto + real SQLite in-memory adapter; not browser or live D1 tests; no real students.'},null,2));
 console.log(`${passed}/${passed} server tests passed`);

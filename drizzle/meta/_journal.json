@@ -15,6 +15,13 @@
       "when": 1793816273768,
       "tag": "0001_tough_mister_sinister",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793851900021,
+      "tag": "0002_left_landau",
+      "breakpoints": true
     }
   ]
 }

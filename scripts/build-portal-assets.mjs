@@ -1,5 +1,10 @@
 import fs from 'node:fs';
-let engines='export function createEngines(){const scope={SIL:{t:k=>k}};\n';
+import vm from 'node:vm';
+const translationContext={};translationContext.window=translationContext;vm.createContext(translationContext);
+for(const file of ['translations','classroom'])vm.runInContext(fs.readFileSync(`js/${file}.js`,'utf8'),translationContext);
+const kk=translationContext.SIL.I18N.kz;
+const dictionary={pc:{slots:kk.pc.slots,issue:kk.pc.issue,fix:kk.pc.fix,tasks:kk.pc.tasks},iot:{comp:kk.iot.comp,issue:kk.iot.issue,fix:kk.iot.fix}};
+let engines='export function createEngines(){const dictionary='+JSON.stringify(dictionary)+';const scope={SIL:{t:(key,params={})=>{const value=key.split(".").reduce((node,part)=>node?.[part],dictionary);return typeof value==="string"?value.replace(/\\{(\\w+)\\}/g,(match,name)=>params[name]??match):key;}}};\n';
 for(const name of ['pc-engine','iot-engine'])engines+=fs.readFileSync(`js/${name}.js`,'utf8').replace('})(typeof window !== "undefined" ? window : globalThis);','})(scope);');
 engines+='\nreturn scope.SIL;}\n';fs.writeFileSync('lib/portal/engines.mjs',engines);
 for(const dir of ['js','css','assets'])fs.cpSync(dir,`public/lab-assets/${dir}`,{recursive:true});
