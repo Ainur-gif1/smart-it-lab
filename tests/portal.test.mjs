@@ -170,22 +170,40 @@ await test('Teacher can set time before start but cannot alter an already runnin
 });
 await test('Submission at the exact deadline is accepted; later work is blocked; duplicate retry is safe',async()=>{
  const deadline=sql.prepare('SELECT deadline_at FROM portal_assignment_runs WHERE student_id=? AND assignment_id=?').get(sql.prepare("SELECT id FROM portal_students WHERE username='flow-student'").get().id,timedAssignment).deadline_at;
- const realNow=Date.now;let now=deadline;Date.now=()=>now;
+ const realNow=Date.now;let now=deadline-1;Date.now=()=>now;
  try{
   const payload={assignmentId:timedAssignment,attempt:timedAttempt('at-deadline')};const accepted=await call('student/submissions','POST',payload,{Cookie:flowCookie});assert.equal(accepted.status,201,JSON.stringify(accepted.data));assert.equal(accepted.data.isLate,false);
   now++;const repeated=await call('student/submissions','POST',payload,{Cookie:flowCookie});assert.equal(repeated.data.id,accepted.data.id);assert.equal(repeated.data.duplicate,true);
   const lateTask=(await call('teacher/assignments','POST',{taskId:'iot-light',mode:'learn',title:'Closed deadline',timeLimitMinutes:1,latePolicy:'block'},teacher(3))).data.id;const clock=(await call('student/assignments/'+lateTask+'/start','POST',{}, {Cookie:flowCookie})).data.timing;now=clock.deadlineAt+1;
-  const blocked=await call('student/submissions','POST',{assignmentId:lateTask,attempt:timedAttempt('after-deadline')},{Cookie:flowCookie});assert.equal(blocked.status,409);assert.equal(blocked.data.code,'deadline_passed');assert.equal(sql.prepare("SELECT count(*) AS n FROM portal_submissions WHERE attempt_id='after-deadline'").get().n,0);
+  const blocked=await call('student/submissions','POST',{assignmentId:lateTask,attempt:timedAttempt('after-deadline')},{Cookie:flowCookie});assert.equal(blocked.status,409);assert.equal(blocked.data.code,'assignment_submitted');assert.equal(sql.prepare("SELECT count(*) AS n FROM portal_submissions WHERE attempt_id='after-deadline'").get().n,0);
  }finally{Date.now=realNow;}
 });
-await test('Late-accept policy records server time, marks lateness and ignores forged client deadlines',async()=>{
- const id=(await call('teacher/assignments','POST',{taskId:'iot-light',mode:'learn',title:'Accept late',timeLimitMinutes:1,latePolicy:'mark'},teacher(3))).data.id;
+await test('Deadline automatically submits the last saved draft for both legacy policies and cannot be resumed',async()=>{
+ for(const policy of ['block','mark']){
+ const id=(await call('teacher/assignments','POST',{taskId:'iot-light',mode:'learn',title:'Automatic expiry',timeLimitMinutes:1,latePolicy:policy},teacher(3))).data.id;
  const realNow=Date.now;let now=realNow();Date.now=()=>now;
  try{
-  const timing=(await call('student/assignments/'+id+'/start','POST',{}, {Cookie:flowCookie})).data.timing;now=timing.deadlineAt+1000;
-  const row=timedAttempt('late-marked');row.timeSec=0;const sent=await call('student/submissions','POST',{assignmentId:id,attempt:row,deadlineAt:now+9999999,latePolicy:'block'},{Cookie:flowCookie});assert.equal(sent.status,201,JSON.stringify(sent.data));assert.equal(sent.data.isLate,true);assert.equal(sent.data.lateBySec,1);assert.equal(sent.data.simulatorScore,100);
-  const teacherWork=(await call('teacher/submissions/'+sent.data.id,'GET',undefined,teacher(3))).data.submission;assert.equal(teacherWork.serverDurationSec,61);assert.equal(teacherWork.deadlineAt,timing.deadlineAt);assert.equal(teacherWork.metrics.timeSec,0);assert.equal(teacherWork.isLate,true);
-  const studentWork=(await call('student/submissions','GET',undefined,{Cookie:flowCookie})).data.submissions.find(x=>x.id===sent.data.id);assert.equal(studentWork.isLate,true);
+  const timing=(await call('student/assignments/'+id+'/start','POST',{}, {Cookie:flowCookie})).data.timing;
+  assert.equal((await call('student/assignments/'+id+'/expire','POST',{}, {Cookie:flowCookie})).data.code,'deadline_not_reached');
+  const row=timedAttempt('auto-'+policy);row.report={conclusion:''};row.finished=true;
+  assert.equal((await call('student/assignments/'+id+'/draft','POST',{attempt:row},{Cookie:flowCookie})).status,200);
+  const restored=await call('student/assignments/'+id+'/start','POST',{}, {Cookie:flowCookie});assert.equal(restored.data.draft.attempt.id,row.id);
+  now=timing.deadlineAt;
+  const sent=await call('student/assignments/'+id+'/expire','POST',{}, {Cookie:flowCookie});assert.equal(sent.status,200,JSON.stringify(sent.data));assert.equal(sent.data.automatic,true);
+  const details=(await call('teacher/submissions/'+sent.data.id,'GET',undefined,teacher(3))).data.submission;assert.equal(details.serverDurationSec,60);assert.equal(details.report.conclusion,'');assert.equal(details.automatic,true);assert.equal(details.submittedAt,new Date(now).toISOString());assert.equal(details.simulatorScore,100);
+  now+=1000;row.report.conclusion='Late edit';const late=await call('student/assignments/'+id+'/draft','POST',{attempt:row},{Cookie:flowCookie});assert.equal(late.data.id,sent.data.id);assert.equal(late.data.submitted,true);
+  assert.equal((await call('student/assignments/'+id+'/start','POST',{}, {Cookie:flowCookie})).data.code,'assignment_submitted');
+  assert.equal((await call('student/assignments/'+id+'/expire','POST',{}, {Cookie:flowCookie})).data.id,sent.data.id);
+  assert.equal(sql.prepare('SELECT count(*) AS n FROM portal_submissions WHERE assignment_id=?').get(id).n,1);
+ }finally{Date.now=realNow;}
+ }
+});
+await test('Teacher refresh finalizes an expired closed-browser empty task once and preserves the deadline',async()=>{
+ const id=(await call('teacher/assignments','POST',{taskId:'pc-office',mode:'learn',title:'Closed browser',timeLimitMinutes:1},teacher(3))).data.id;
+ const realNow=Date.now;let now=realNow();Date.now=()=>now;
+ try{const timing=(await call('student/assignments/'+id+'/start','POST',{}, {Cookie:flowCookie})).data.timing;now=timing.deadlineAt+5000;
+  const list=(await call('teacher/submissions','GET',undefined,teacher(3))).data.submissions;const saved=list.find(x=>x.assignmentId===id);assert(saved);assert.equal(saved.automatic,true);assert.equal(saved.completed,false);assert.equal(saved.submittedAt,new Date(timing.deadlineAt).toISOString());assert.equal(saved.receivedAt,new Date(now).toISOString());
+  await call('teacher/submissions','GET',undefined,teacher(3));assert.equal(sql.prepare('SELECT count(*) AS n FROM portal_submissions WHERE assignment_id=?').get(id).n,1);
  }finally{Date.now=realNow;}
 });
 await test('Students receive independent start times for the same assignment',async()=>{
@@ -193,16 +211,16 @@ await test('Students receive independent start times for the same assignment',as
  const own=(await call('student/assignments/'+timedAssignment+'/start','POST',{}, {Cookie:changed.cookie})).data.timing;assert.equal(own.expired,false);assert.equal(own.deadlineAt-Date.parse(own.startedAt),60000);assert(own.deadlineAt>own.serverNow);
  const flowRun=sql.prepare("SELECT r.* FROM portal_assignment_runs r JOIN portal_students s ON s.id=r.student_id WHERE s.username='flow-student' AND r.assignment_id=?").get(timedAssignment);assert.notEqual(own.startedAt,flowRun.started_at);
 });
-await test('Countdown uses server time and blocks only the configured late policy',async()=>{
+await test('Countdown automatically submits at expiry and freezes both legacy policies',async()=>{
  for(const latePolicy of ['block','mark']){
   const app=makeApp(),I=wire(app);I.startSimulation();I.setSimValue(290);
   app.context.SIL_PORTAL={student:{id:'clock',displayCode:'CLOCK'},assignment:{id:'clock-task',taskId:'iot-light',mode:'learn',title:'Clock',instruction:'',timeLimitMinutes:1,latePolicy}};
-  let mono=0,tick,initialize;app.context.performance={now:()=>mono};app.context.setInterval=fn=>{tick=fn;};app.context.fetch=async()=>({ok:true,json:async()=>({timing:{startedAt:new Date(1000).toISOString(),deadlineAt:61000,serverNow:1000,timeLimitMinutes:1,latePolicy}})});
+  let mono=0,tick,initialize;app.context.performance={now:()=>mono};app.context.setInterval=fn=>{tick=fn;};app.context.fetch=async path=>({ok:true,json:async()=>path.endsWith('/expire')?{id:'auto-clock',submitted:true,automatic:true,submittedAt:new Date(61000).toISOString()}:{timing:{startedAt:new Date(1000).toISOString(),deadlineAt:61000,serverNow:1000,timeLimitMinutes:1,latePolicy}}});
   const add=app.context.document.addEventListener;app.context.document.addEventListener=(event,fn)=>event==='DOMContentLoaded'?initialize=fn:add(event,fn);
   vm.runInContext(fs.readFileSync(new URL('../public/portal/bridge.js',import.meta.url),'utf8'),app.context);initialize();assert.equal(app.get('main').inert,true);
   await new Promise(resolve=>setImmediate(resolve));assert.equal(app.get('main').inert,false);assert(app.get('portal-timer').textContent.includes('01:00'));
   mono=59000;tick();assert(app.get('portal-timer').textContent.includes('00:01'));
-  mono=60001;tick();assert(app.get('portal-timer').textContent.includes('00:00'));assert.equal(app.get('portal-send').disabled,latePolicy==='block');
+  mono=60001;tick();assert(app.get('portal-timer').textContent.includes('00:00'));assert.equal(app.get('portal-send').disabled,true);assert.equal(app.get('main').inert,true);await new Promise(resolve=>setImmediate(resolve));assert.equal(app.get('portal-timer').textContent,'Уақыт тоқтатылды');assert.equal(app.get('portal-result-link').href,'/student#submission-auto-clock');
  }
 });
 await test('Only a conclusion is required; the teacher sees it and empty text is rejected',async()=>{
@@ -216,7 +234,7 @@ await test('Teacher time controls render and student Start calls the server befo
  const teacherApp=makeApp();teacherApp.get('[data-portal-role]').dataset.portalRole='teacher';
  teacherApp.context.fetch=async path=>({ok:true,json:async()=>path.endsWith('/me')?{teacher:{username:'teacher',configured:true}}:path.endsWith('/students')?{students:[]}:path.endsWith('/assignments')?{assignments:[task]}:{submissions:[]}});
  vm.runInContext(fs.readFileSync(new URL('../public/portal/app.js',import.meta.url),'utf8'),teacherApp.context);await new Promise(resolve=>setImmediate(resolve));
- const html=teacherApp.get('portal-content').innerHTML;assert(html.includes('name="timeLimitMinutes"'));assert(html.includes('name="latePolicy"'));assert(html.includes('15 минут'));assert(html.includes('data-time="ui-time-task"'));
+ const html=teacherApp.get('portal-content').innerHTML;assert(html.includes('name="timeLimitMinutes"'));assert(!html.includes('name="latePolicy"'));assert(html.includes('автоматты тапсырылып'));assert(html.includes('15 минут'));assert(html.includes('data-time="ui-time-task"'));
  const studentApp=makeApp(),calls=[];let opened;studentApp.get('[data-portal-role]').dataset.portalRole='student';studentApp.context.location.assign=url=>{opened=url;};
  studentApp.context.fetch=async(path,options)=>{calls.push({path,options});return {ok:true,json:async()=>path.endsWith('/me')?{student:{id:'ui-student',username:'ui',displayCode:'UI',groupCode:'',mustChangePassword:false}}:path.endsWith('/assignments')?{assignments:[task,{...task,id:'closed-ui',submissionId:'ui-result',submittedAt:new Date().toISOString()}]}:path.endsWith('/submissions')?{submissions:[]}:{timing:{}}};};
  vm.runInContext(fs.readFileSync(new URL('../public/portal/app.js',import.meta.url),'utf8'),studentApp.context);await new Promise(resolve=>setImmediate(resolve));assert(studentApp.get('portal-content').innerHTML.includes('data-start="ui-time-task"'));assert(!studentApp.get('portal-content').innerHTML.includes('data-start="closed-ui"'));assert(studentApp.get('portal-content').innerHTML.includes('/student#submission-ui-result'));
@@ -290,6 +308,17 @@ await test('A stale open tab is locked when server timing reports final submissi
  vm.runInContext(fs.readFileSync(new URL('../public/portal/bridge.js',import.meta.url),'utf8'),app.context);initialized();await new Promise(resolve=>setImmediate(resolve));assert.equal(app.get('main').inert,false);
  finished=true;app.context.document.visibilityState='visible';app.context.document.dispatchEvent({type:'visibilitychange'});await new Promise(resolve=>setImmediate(resolve));assert.equal(app.get('main').inert,true);assert.equal(app.get('portal-send').disabled,true);assert.equal(app.get('portal-report').disabled,true);assert(cleared);assert.equal(app.get('portal-result-link').href,'/student#submission-frozen-result');
  mono=999999;tick();assert.equal(app.get('portal-timer').textContent,'Уақыт тоқтатылды');
+});
+await test('An offline expiry remains locked and retries automatically without allowing further work',async()=>{
+ const app=makeApp();wire(app);app.context.SIL_PORTAL={student:{displayCode:'OFFLINE'},assignment:{id:'offline',taskId:'iot-light',mode:'learn',title:'Offline',timeLimitMinutes:1}};
+ let init,tick,mono=0,online=false,tries=0;app.context.performance={now:()=>mono};app.context.setInterval=fn=>{tick=fn;};
+ app.context.fetch=async path=>{if(path.endsWith('/expire')){tries++;if(!online)throw Error('offline');return {ok:true,json:async()=>({id:'retry-result',submitted:true,automatic:true})};}return {ok:true,json:async()=>({timing:{serverNow:1000,deadlineAt:61000,timeLimitMinutes:1}})};};
+ const add=app.context.document.addEventListener;app.context.document.addEventListener=(e,f)=>e==='DOMContentLoaded'?init=f:add(e,f);vm.runInContext(fs.readFileSync(new URL('../public/portal/bridge.js',import.meta.url),'utf8'),app.context);init();await new Promise(r=>setImmediate(r));
+ mono=60000;tick();await new Promise(r=>setImmediate(r));assert.equal(app.get('main').inert,true);assert.equal(app.get('portal-send').disabled,true);assert(app.get('portal-submit-status').textContent.includes('Байланыс'));online=true;tick();await new Promise(r=>setImmediate(r));assert.equal(tries,2);assert.equal(app.get('portal-result-link').href,'/student#submission-retry-result');assert.equal(app.get('main').inert,true);
+});
+await test('Reopening restores a server saved partial circuit without resetting its deadline',async()=>{
+ const app=makeApp();wire(app);const d=timedAttempt('restore-partial');d.snapshot.modules[0].pin=null;d.finished=false;d.report={conclusion:''};app.context.SIL_PORTAL={student:{displayCode:'RESTORE'},assignment:{id:'restore',taskId:'iot-light',mode:'learn',title:'Restore',timeLimitMinutes:1}};
+ let init;app.context.fetch=async()=>({ok:true,json:async()=>({timing:{serverNow:31000,deadlineAt:61000,timeLimitMinutes:1},draft:{revision:2,attempt:d}})});const add=app.context.document.addEventListener;app.context.document.addEventListener=(e,f)=>e==='DOMContentLoaded'?init=f:add(e,f);vm.runInContext(fs.readFileSync(new URL('../public/portal/bridge.js',import.meta.url),'utf8'),app.context);init();await new Promise(r=>setImmediate(r));assert.equal(app.S.IotLab.state.attemptId,d.id);assert.equal(app.S.IotLab.state.modules[0].pin,null);assert(app.get('portal-timer').textContent.includes('00:30'));assert.equal(app.get('main').inert,false);
 });
 await test('Repeated wrong passwords are rate limited',async()=>{for(let i=0;i<10;i++)assert.equal((await call('student/login','POST',{username:'nonexistent',password:'wrong-password'})).status,401);assert.equal((await call('student/login','POST',{username:'nonexistent',password:'wrong-password'})).status,429);});
 fs.writeFileSync(new URL('../docs/portal-test-results.json',import.meta.url),JSON.stringify({date:new Date().toISOString(),passed,total:passed,scope:'Node Request/Response + WebCrypto + real SQLite in-memory adapter; not browser or live D1 tests; no real students.'},null,2));

@@ -29,6 +29,13 @@
       "when": 1793854027793,
       "tag": "0003_safe_sharon_carter",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793856566594,
+      "tag": "0004_fair_white_queen",
+      "breakpoints": true
     }
   ]
 }
