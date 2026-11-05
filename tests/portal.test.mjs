@@ -122,14 +122,20 @@ await test('Exam with unwired GPIO is submitted as incomplete, preserving diagno
  const duplicate=await call('student/submissions','POST',{assignmentId:motionAssignment,attempt:row},{Cookie:flowCookie});assert.equal(duplicate.data.id,sent.data.id);assert.equal(duplicate.data.duplicate,true);
  const detail=(await call('teacher/submissions/'+sent.data.id,'GET',undefined,teacher(3))).data.submission;assert(detail.checkResult.issueCodes.includes('notWired'));assert.equal(detail.snapshot.modules[0].pin,null);
 });
-await test('Submission chooser selects newest attempt and switches when another is completed',async()=>{
+await test('Submission and conclusion automatically use the latest attempt without a chooser',async()=>{
  const app=makeApp(),I=wire(app);I.startSimulation();I.setSimValue(290);const first=app.S.Progress.attempts()[0].id;I.restartSimulation();I.setSimValue(290);const second=app.S.Progress.attempts()[1].id;
+ app.S.Progress.saveReport(second,{evidence:'',fixes:'',conclusion:'Second attempt conclusion'});
  app.context.SIL_PORTAL={student:{id:'test-flow',displayCode:'FLOW'},assignment:{id:'test-assignment',taskId:'iot-light',mode:'learn',title:'Test',instruction:''}};
- let initialize;const add=app.context.document.addEventListener;app.context.document.addEventListener=(event,fn)=>event==='DOMContentLoaded'?initialize=fn:add(event,fn);
+ let initialize,posted;const add=app.context.document.addEventListener;app.context.document.addEventListener=(event,fn)=>event==='DOMContentLoaded'?initialize=fn:add(event,fn);
+ app.context.fetch=async(url,options)=>{posted=JSON.parse(options.body);return {ok:true,json:async()=>({id:'test-saved'})};};
  vm.runInContext(fs.readFileSync(new URL('../public/portal/bridge.js',import.meta.url),'utf8'),app.context);initialize();
- const select=app.get('portal-attempt');assert.equal(select.value,second);select.value=first;app.context.document.dispatchEvent({type:'sil:progress'});assert.equal(select.value,first);
- I.restartSimulation();I.setSimValue(290);const newest=app.S.Progress.attempts().at(-1).id;assert.notEqual(newest,second);assert.equal(select.value,newest);
+ assert(!app.get('portal-submission').innerHTML.includes('Жіберілетін әрекет'));assert(!app.get('portal-submission').innerHTML.includes('portal-attempt'));
+ app.get('portal-report').onclick();assert(app.get('report-content').innerHTML.includes('Second attempt conclusion'));
+ await app.get('portal-send').onclick();assert.equal(posted.attempt.id,second);assert.notEqual(posted.attempt.id,first);
+ I.restartSimulation();I.setSimValue(290);const newest=app.S.Progress.attempts().at(-1).id;app.S.Progress.saveReport(newest,{evidence:'',fixes:'',conclusion:'Newest conclusion'});
+ app.get('portal-report').onclick();assert(app.get('report-content').innerHTML.includes('Newest conclusion'));await app.get('portal-send').onclick();assert.equal(posted.attempt.id,newest);
 });
+
 let timedAssignment;
 const timedAttempt=id=>({...structuredClone(attempt),id});
 await test('Teacher validates duration and exposes the configured time to students',async()=>{
