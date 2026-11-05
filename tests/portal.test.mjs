@@ -6,7 +6,7 @@ const {makeApp,wire}=createRequire(import.meta.url)('./classroom.test.cjs');
 import assert from 'node:assert/strict';
 import { handleApi,gradeAttempt } from '../lib/portal/core.mjs';
 const sql=new DatabaseSync(':memory:');for(const name of fs.readdirSync(new URL('../drizzle/',import.meta.url)).filter(x=>x.endsWith('.sql')).sort())sql.exec(fs.readFileSync(new URL('../drizzle/'+name,import.meta.url),'utf8'));
-const DB={prepare(query){let args=[];return {bind(...a){args=a;return this;},async first(){return sql.prepare(query).get(...args)||null;},async all(){return {results:sql.prepare(query).all(...args)};},async run(){return sql.prepare(query).run(...args);}};},async batch(statements){sql.exec('BEGIN');try{const r=[];for(const s of statements)r.push(await s.run());sql.exec('COMMIT');return r;}catch(e){sql.exec('ROLLBACK');throw e;}}};
+const DB={prepare(query){let args=[];return {bind(...a){args=a;return this;},async first(){return sql.prepare(query).get(...args)||null;},async all(){return {results:sql.prepare(query).all(...args)};},runSync(){return sql.prepare(query).run(...args);},async run(){return this.runSync();}};},async batch(statements){sql.exec('BEGIN');try{const r=[];for(const s of statements)r.push(s.runSync());sql.exec('COMMIT');return r;}catch(e){sql.exec('ROLLBACK');throw e;}}};
 const env={DB,AUTH_PEPPER:'test-only-pepper-abcdefghijklmnopqrstuvwxyz-123456',TEACHER_EMAILS:'teacher1@example.test,teacher2@example.test,teacher3@example.test'};
 const teacher=n=>({'oai-authenticated-user-id':'teacher-'+n,'oai-authenticated-user-email':`teacher${n}@example.test`});
 async function call(path,method='GET',data,headers={}){const r=await handleApi(new Request('https://lab.example/api/'+path,{method,headers:{Origin:'https://lab.example','Content-Type':'application/json',...headers},body:data===undefined?undefined:JSON.stringify(data)}),env);return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0],headers:r.headers};}
@@ -116,24 +116,26 @@ await test('Real frontend records from all six labs in both modes submit and app
  const list=(await call('teacher/submissions','GET',undefined,teacher(3))).data.submissions;assert.equal(list.length,12);assert(list.every(x=>x.completed&&x.simulatorScore===100));
 });
 await test('Exam with unwired GPIO is submitted as incomplete, preserving diagnostic and deduplication',async()=>{
+ const motionAssignment=(await call('teacher/assignments','POST',{taskId:'iot-motion',mode:'exam',title:'Unwired exam'},teacher(3))).data.id;
  const app=makeApp(),I=app.S.IotLab;I.switchProject('iot-motion');I.switchMode('exam');I.addComponent('esp32');I.addComponent('pir');I.addComponent('buzzer');I.finishExam();
  const row=JSON.parse(JSON.stringify(app.S.Progress.attempts()[0]));row.report={evidence:'Қосылмаған пиндер',fixes:'GPIO таңдалмады',conclusion:'Тапсырма аяқталмаған'};assert.equal(row.snapshot.modules[0].pin,null);
  const sent=await call('student/submissions','POST',{assignmentId:motionAssignment,attempt:row},{Cookie:flowCookie});assert.equal(sent.status,201,JSON.stringify(sent.data));assert.equal(sent.data.completed,false);assert(sent.data.simulatorScore<100);
  const duplicate=await call('student/submissions','POST',{assignmentId:motionAssignment,attempt:row},{Cookie:flowCookie});assert.equal(duplicate.data.id,sent.data.id);assert.equal(duplicate.data.duplicate,true);
  const detail=(await call('teacher/submissions/'+sent.data.id,'GET',undefined,teacher(3))).data.submission;assert(detail.checkResult.issueCodes.includes('notWired'));assert.equal(detail.snapshot.modules[0].pin,null);
 });
-await test('Submission and conclusion automatically use the latest attempt without a chooser',async()=>{
+await test('Latest result is submitted once and the practical is locked after successful sending',async()=>{
  const app=makeApp(),I=wire(app);I.startSimulation();I.setSimValue(290);const first=app.S.Progress.attempts()[0].id;I.restartSimulation();I.setSimValue(290);const second=app.S.Progress.attempts()[1].id;
  app.S.Progress.saveReport(second,{evidence:'',fixes:'',conclusion:'Second attempt conclusion'});
  app.context.SIL_PORTAL={student:{id:'test-flow',displayCode:'FLOW'},assignment:{id:'test-assignment',taskId:'iot-light',mode:'learn',title:'Test',instruction:''}};
- let initialize,posted;const add=app.context.document.addEventListener;app.context.document.addEventListener=(event,fn)=>event==='DOMContentLoaded'?initialize=fn:add(event,fn);
- app.context.fetch=async(url,options)=>{posted=JSON.parse(options.body);return {ok:true,json:async()=>({id:'test-saved'})};};
+ let initialize,posted,calls=0;const add=app.context.document.addEventListener;app.context.document.addEventListener=(event,fn)=>event==='DOMContentLoaded'?initialize=fn:add(event,fn);
+ app.context.fetch=async(url,options)=>{calls++;posted=JSON.parse(options.body);return {ok:true,json:async()=>({id:'test-saved',submittedAt:new Date().toISOString()})};};
  vm.runInContext(fs.readFileSync(new URL('../public/portal/bridge.js',import.meta.url),'utf8'),app.context);initialize();
  assert(!app.get('portal-submission').innerHTML.includes('Жіберілетін әрекет'));assert(!app.get('portal-submission').innerHTML.includes('portal-attempt'));
  app.get('portal-report').onclick();assert(app.get('report-content').innerHTML.includes('Second attempt conclusion'));
- await app.get('portal-send').onclick();assert.equal(posted.attempt.id,second);assert.notEqual(posted.attempt.id,first);
  I.restartSimulation();I.setSimValue(290);const newest=app.S.Progress.attempts().at(-1).id;app.S.Progress.saveReport(newest,{evidence:'',fixes:'',conclusion:'Newest conclusion'});
- app.get('portal-report').onclick();assert(app.get('report-content').innerHTML.includes('Newest conclusion'));await app.get('portal-send').onclick();assert.equal(posted.attempt.id,newest);
+ app.get('portal-report').onclick();assert(app.get('report-content').innerHTML.includes('Newest conclusion'));await app.get('portal-send').onclick();assert.equal(posted.attempt.id,newest);assert.notEqual(posted.attempt.id,first);
+ assert.equal(app.get('main').inert,true);assert.equal(app.get('portal-send').disabled,true);assert.equal(app.get('portal-report').disabled,true);assert.equal(app.get('portal-timer').textContent,'Уақыт тоқтатылды');assert.equal(app.get('portal-result-link').href,'/student#submission-test-saved');
+ I.restartSimulation();I.setSimValue(290);await app.get('portal-send').onclick();assert.equal(calls,1);assert.equal(app.get('main').inert,true);
 });
 
 let timedAssignment;
@@ -172,7 +174,8 @@ await test('Submission at the exact deadline is accepted; later work is blocked;
  try{
   const payload={assignmentId:timedAssignment,attempt:timedAttempt('at-deadline')};const accepted=await call('student/submissions','POST',payload,{Cookie:flowCookie});assert.equal(accepted.status,201,JSON.stringify(accepted.data));assert.equal(accepted.data.isLate,false);
   now++;const repeated=await call('student/submissions','POST',payload,{Cookie:flowCookie});assert.equal(repeated.data.id,accepted.data.id);assert.equal(repeated.data.duplicate,true);
-  const blocked=await call('student/submissions','POST',{assignmentId:timedAssignment,attempt:timedAttempt('after-deadline')},{Cookie:flowCookie});assert.equal(blocked.status,409);assert.equal(blocked.data.code,'deadline_passed');assert.equal(sql.prepare("SELECT count(*) AS n FROM portal_submissions WHERE attempt_id='after-deadline'").get().n,0);
+  const lateTask=(await call('teacher/assignments','POST',{taskId:'iot-light',mode:'learn',title:'Closed deadline',timeLimitMinutes:1,latePolicy:'block'},teacher(3))).data.id;const clock=(await call('student/assignments/'+lateTask+'/start','POST',{}, {Cookie:flowCookie})).data.timing;now=clock.deadlineAt+1;
+  const blocked=await call('student/submissions','POST',{assignmentId:lateTask,attempt:timedAttempt('after-deadline')},{Cookie:flowCookie});assert.equal(blocked.status,409);assert.equal(blocked.data.code,'deadline_passed');assert.equal(sql.prepare("SELECT count(*) AS n FROM portal_submissions WHERE attempt_id='after-deadline'").get().n,0);
  }finally{Date.now=realNow;}
 });
 await test('Late-accept policy records server time, marks lateness and ignores forged client deadlines',async()=>{
@@ -215,8 +218,8 @@ await test('Teacher time controls render and student Start calls the server befo
  vm.runInContext(fs.readFileSync(new URL('../public/portal/app.js',import.meta.url),'utf8'),teacherApp.context);await new Promise(resolve=>setImmediate(resolve));
  const html=teacherApp.get('portal-content').innerHTML;assert(html.includes('name="timeLimitMinutes"'));assert(html.includes('name="latePolicy"'));assert(html.includes('15 минут'));assert(html.includes('data-time="ui-time-task"'));
  const studentApp=makeApp(),calls=[];let opened;studentApp.get('[data-portal-role]').dataset.portalRole='student';studentApp.context.location.assign=url=>{opened=url;};
- studentApp.context.fetch=async(path,options)=>{calls.push({path,options});return {ok:true,json:async()=>path.endsWith('/me')?{student:{id:'ui-student',username:'ui',displayCode:'UI',groupCode:'',mustChangePassword:false}}:path.endsWith('/assignments')?{assignments:[task]}:path.endsWith('/submissions')?{submissions:[]}:{timing:{}}};};
- vm.runInContext(fs.readFileSync(new URL('../public/portal/app.js',import.meta.url),'utf8'),studentApp.context);await new Promise(resolve=>setImmediate(resolve));assert(studentApp.get('portal-content').innerHTML.includes('data-start="ui-time-task"'));
+ studentApp.context.fetch=async(path,options)=>{calls.push({path,options});return {ok:true,json:async()=>path.endsWith('/me')?{student:{id:'ui-student',username:'ui',displayCode:'UI',groupCode:'',mustChangePassword:false}}:path.endsWith('/assignments')?{assignments:[task,{...task,id:'closed-ui',submissionId:'ui-result',submittedAt:new Date().toISOString()}]}:path.endsWith('/submissions')?{submissions:[]}:{timing:{}}};};
+ vm.runInContext(fs.readFileSync(new URL('../public/portal/app.js',import.meta.url),'utf8'),studentApp.context);await new Promise(resolve=>setImmediate(resolve));assert(studentApp.get('portal-content').innerHTML.includes('data-start="ui-time-task"'));assert(!studentApp.get('portal-content').innerHTML.includes('data-start="closed-ui"'));assert(studentApp.get('portal-content').innerHTML.includes('/student#submission-ui-result'));
  await studentApp.get('portal-content').onclick({target:{dataset:{start:'ui-time-task'},disabled:false}});assert.equal(opened,'/lab?assignment=ui-time-task');assert(calls.some(x=>x.path==='/api/student/assignments/ui-time-task/start'&&x.options.method==='POST'));
 });
 await test('Grading explains concrete GPIO, socket, DDR, cooling and power errors in Kazakh',async()=>{
@@ -230,6 +233,7 @@ await test('Grading explains concrete GPIO, socket, DDR, cooling and power error
  const observed=gradeAttempt({...timedAttempt('one-state'),snapshot:{type:'iot',controller:'esp32',modules:[{id:'light',pin:'GPIO34'},{id:'led',pin:'GPIO2'}],values:[290]}});assert(observed.check.issues.some(x=>x.code==='notObserved_off'));
 });
 await test('Teacher and student both receive the saved result with exact error location and criteria',async()=>{
+ const motionAssignment=(await call('teacher/assignments','POST',{taskId:'iot-motion',mode:'exam',title:'Diagnostic exam'},teacher(3))).data.id;
  const row={...timedAttempt('shared-diagnostic'),taskId:'iot-motion',mode:'exam',snapshot:{type:'iot',controller:'esp32',modules:[{id:'pir',pin:'GPIO25'},{id:'buzzer',pin:'GPIO35'}],values:[false,true]},report:{conclusion:'GPIO дұрыс таңдалмаған'}};
  const sent=await call('student/submissions','POST',{assignmentId:motionAssignment,attempt:row},{Cookie:flowCookie});assert.equal(sent.status,201);assert.equal(sent.data.completed,false);
  const teacherView=(await call('teacher/submissions/'+sent.data.id,'GET',undefined,teacher(3))).data.submission;
@@ -237,6 +241,55 @@ await test('Teacher and student both receive the saved result with exact error l
  assert.deepEqual(studentView.checkResult,teacherView.checkResult);assert.equal(studentView.simulatorScore,teacherView.simulatorScore);assert(teacherView.checkResult.issues.some(x=>x.code==='inputOnly'&&x.location.includes('GPIO 35')));assert(teacherView.checkResult.criteria.some(x=>x.key==='wiring'&&!x.passed));
  const oldCheck=JSON.stringify({ok:false,issueCodes:['inputOnly']});sql.prepare('UPDATE portal_submissions SET check_json=? WHERE id=?').run(oldCheck,sent.data.id);
  const legacy=(await call('teacher/submissions/'+sent.data.id,'GET',undefined,teacher(3))).data.submission;assert(legacy.checkResult.issues.some(x=>x.code==='inputOnly'));assert.equal(sql.prepare('SELECT check_json FROM portal_submissions WHERE id=?').get(sent.data.id).check_json,oldCheck);
+});
+await test('Accepted submission freezes server duration and prevents start, resume and replacement',async()=>{
+ const id=(await call('teacher/assignments','POST',{taskId:'iot-light',mode:'learn',title:'Final timed work',timeLimitMinutes:1,latePolicy:'mark'},teacher(3))).data.id;
+ const realNow=Date.now;let now=realNow();Date.now=()=>now;
+ try{
+  await call('student/assignments/'+id+'/start','POST',{}, {Cookie:flowCookie});now+=10000;
+  const sent=await call('student/submissions','POST',{assignmentId:id,attempt:timedAttempt('final-once')},{Cookie:flowCookie});assert.equal(sent.status,201);assert.equal(sent.data.serverDurationSec,10);
+  now+=120000;const timing=(await call('student/assignments/'+id+'/timing','GET',undefined,{Cookie:flowCookie})).data.timing;assert.equal(timing.submitted,true);assert.equal(timing.serverDurationSec,10);assert.equal(timing.submittedAt,sent.data.submittedAt);
+  assert.equal((await call('student/assignments/'+id+'/start','POST',{}, {Cookie:flowCookie})).data.code,'assignment_submitted');
+  const retry=await call('student/submissions','POST',{assignmentId:id,attempt:timedAttempt('final-once')},{Cookie:flowCookie});assert.equal(retry.data.id,sent.data.id);assert.equal(retry.data.serverDurationSec,10);assert.equal(retry.data.duplicate,true);
+  const replace=await call('student/submissions','POST',{assignmentId:id,attempt:timedAttempt('different-new-id')},{Cookie:flowCookie});assert.equal(replace.status,409);assert.equal(replace.data.code,'assignment_submitted');
+  const card=(await call('student/assignments','GET',undefined,{Cookie:flowCookie})).data.assignments.find(x=>x.id===id);assert.equal(card.submissionId,sent.data.id);assert.equal(card.serverDurationSec,10);
+  const teacherResult=(await call('teacher/submissions/'+sent.data.id,'GET',undefined,teacher(3))).data.submission;assert.equal(teacherResult.serverDurationSec,10);
+ }finally{Date.now=realNow;}
+});
+await test('Simultaneous submissions create one final result, including safe duplicate clicks',async()=>{
+ for(const sameAttempt of [false,true]){
+  const id=(await call('teacher/assignments','POST',{taskId:'iot-light',mode:'learn',title:'Concurrent final'},teacher(3))).data.id;
+  const results=await Promise.all([call('student/submissions','POST',{assignmentId:id,attempt:timedAttempt('race-a-'+id)},{Cookie:flowCookie}),call('student/submissions','POST',{assignmentId:id,attempt:timedAttempt((sameAttempt?'race-a-':'race-b-')+id)},{Cookie:flowCookie})]);
+  assert.deepEqual(results.map(x=>x.status).sort(),sameAttempt?[200,201]:[201,409]);
+  assert.equal(sql.prepare('SELECT count(*) AS n FROM portal_submissions WHERE assignment_id=?').get(id).n,1);assert.equal(sql.prepare('SELECT count(*) AS n FROM portal_assignment_finishes WHERE assignment_id=?').get(id).n,1);
+  if(sameAttempt)assert.equal(results[0].data.id,results[1].data.id);
+ }
+});
+await test('A database failure rolls back finalization and leaves the task open for retry',async()=>{
+ const id=(await call('teacher/assignments','POST',{taskId:'iot-light',mode:'learn',title:'Failed save'},teacher(3))).data.id;
+ const original=DB.batch;DB.batch=async statements=>{statements[1].runSync=()=>{throw Error('test-only insert failure');};return original.call(DB,statements);};
+ try{assert.equal((await call('student/submissions','POST',{assignmentId:id,attempt:timedAttempt('failed-final-save')},{Cookie:flowCookie})).status,500);}finally{DB.batch=original;}
+ assert.equal(sql.prepare('SELECT count(*) AS n FROM portal_assignment_finishes WHERE assignment_id=?').get(id).n,0);
+ assert.equal(sql.prepare('SELECT count(*) AS n FROM portal_submissions WHERE assignment_id=?').get(id).n,0);
+ assert.equal((await call('student/assignments/'+id+'/start','POST',{}, {Cookie:flowCookie})).status,200);
+ assert.equal((await call('student/submissions','POST',{assignmentId:id,attempt:timedAttempt('failed-final-save')},{Cookie:flowCookie})).status,201);
+});
+await test('Historical submissions also close tasks without rewriting their records',async()=>{
+ const id=assignment;const before=sql.prepare('SELECT * FROM portal_submissions WHERE id=?').get(submission);
+ sql.prepare('DELETE FROM portal_assignment_finishes WHERE assignment_id=?').run(id);await call('teacher/assignments/'+id,'PATCH',{active:true},teacher(1));
+ const oldLogin=await call('student/login','POST',{username:'student-one',password:'9012'});const changed=await call('student/password','POST',{oldPassword:'9012',newPassword:'3456'},{Cookie:oldLogin.cookie});
+ const start=await call('student/assignments/'+id+'/start','POST',{}, {Cookie:changed.cookie});assert.equal(start.status,409);assert.equal(start.data.code,'assignment_submitted');
+ assert.deepEqual(sql.prepare('SELECT * FROM portal_submissions WHERE id=?').get(submission),before);
+});
+await test('A stale open tab is locked when server timing reports final submission',async()=>{
+ const app=makeApp(),I=wire(app);I.startSimulation();I.setSimValue(290);
+ app.context.SIL_PORTAL={student:{id:'clock',displayCode:'CLOCK'},assignment:{id:'closed-clock',taskId:'iot-light',mode:'learn',title:'Clock',instruction:'',timeLimitMinutes:1,latePolicy:'mark'}};
+ let initialized,finished=false,mono=0,tick,cleared=false;app.context.performance={now:()=>mono};app.context.setInterval=fn=>{tick=fn;return 7;};app.context.clearInterval=id=>{if(id===7)cleared=true;};
+ app.context.fetch=async()=>({ok:true,json:async()=>({timing:{startedAt:new Date(1000).toISOString(),deadlineAt:61000,serverNow:1000,timeLimitMinutes:1,latePolicy:'mark',submitted:finished,submittedAt:finished?new Date(11000).toISOString():null,submissionId:finished?'frozen-result':null,serverDurationSec:finished?10:null}})});
+ const add=app.context.document.addEventListener;app.context.document.addEventListener=(event,fn)=>event==='DOMContentLoaded'?initialized=fn:add(event,fn);
+ vm.runInContext(fs.readFileSync(new URL('../public/portal/bridge.js',import.meta.url),'utf8'),app.context);initialized();await new Promise(resolve=>setImmediate(resolve));assert.equal(app.get('main').inert,false);
+ finished=true;app.context.document.visibilityState='visible';app.context.document.dispatchEvent({type:'visibilitychange'});await new Promise(resolve=>setImmediate(resolve));assert.equal(app.get('main').inert,true);assert.equal(app.get('portal-send').disabled,true);assert.equal(app.get('portal-report').disabled,true);assert(cleared);assert.equal(app.get('portal-result-link').href,'/student#submission-frozen-result');
+ mono=999999;tick();assert.equal(app.get('portal-timer').textContent,'Уақыт тоқтатылды');
 });
 await test('Repeated wrong passwords are rate limited',async()=>{for(let i=0;i<10;i++)assert.equal((await call('student/login','POST',{username:'nonexistent',password:'wrong-password'})).status,401);assert.equal((await call('student/login','POST',{username:'nonexistent',password:'wrong-password'})).status,429);});
 fs.writeFileSync(new URL('../docs/portal-test-results.json',import.meta.url),JSON.stringify({date:new Date().toISOString(),passed,total:passed,scope:'Node Request/Response + WebCrypto + real SQLite in-memory adapter; not browser or live D1 tests; no real students.'},null,2));

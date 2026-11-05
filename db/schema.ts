@@ -36,3 +36,8 @@ export const assignmentRuns = sqliteTable('portal_assignment_runs', {
  studentId: text('student_id').notNull().references(()=>students.id), assignmentId: text('assignment_id').notNull().references(()=>assignments.id),
  startedAt: text('started_at').notNull(), deadlineAt: integer('deadline_at'), timeLimitMinutes: integer('time_limit_minutes'), latePolicy: text('late_policy').notNull().default('block')
 },t=>[primaryKey({columns:[t.studentId,t.assignmentId]})]);
+
+export const assignmentFinishes = sqliteTable('portal_assignment_finishes', {
+ studentId: text('student_id').notNull().references(()=>students.id), assignmentId: text('assignment_id').notNull().references(()=>assignments.id),
+ submissionId: text('submission_id').notNull().unique(), submittedAt: text('submitted_at').notNull()
+},t=>[primaryKey({columns:[t.studentId,t.assignmentId]})]);

@@ -24,7 +24,7 @@ function makeApp({storageThrows=false, saved={}, coarsePointer=false} = {}) {
   const memory={...saved};
   const localStorage={getItem:k=>{if(storageThrows)throw Error('storage blocked');return memory[k]||null;},setItem:(k,v)=>{if(storageThrows)throw Error('storage blocked');memory[k]=v;},removeItem:k=>delete memory[k]};
   const context={document,localStorage,console:{log(){},warn:(...v)=>warnings.push(v),error:(...v)=>warnings.push(v)},Date,JSON,Map,Set,URL,Blob,
-    setTimeout:fn=>{queueMicrotask(fn);return 0;},clearTimeout(){},setInterval(){},location:{hash:''},CustomEvent:class{constructor(type,opts={}){this.type=type;this.detail=opts.detail;}}};
+    setTimeout:fn=>{queueMicrotask(fn);return 0;},clearTimeout(){},setInterval(){},clearInterval(){},location:{hash:''},CustomEvent:class{constructor(type,opts={}){this.type=type;this.detail=opts.detail;}}};
   context.window=context;context.matchMedia=()=>({matches:coarsePointer});context.confirm=()=>true;context.scrollTo=()=>{};context.addEventListener=()=>{};context.print=()=>{};
   vm.createContext(context);
   const order=['config','translations','classroom','ui','progress','pc-engine','iot-engine','ai-mentor','pc-builder','iot-lab','teacher','reports','app'];
