@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1793773524690,
+      "tag": "0000_absent_jimmy_woo",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793816273768,
+      "tag": "0001_tough_mister_sinister",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793851900021,
+      "tag": "0002_left_landau",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793854027793,
+      "tag": "0003_safe_sharon_carter",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793856566594,
+      "tag": "0004_fair_white_queen",
+      "breakpoints": true
+    }
+  ]
+}

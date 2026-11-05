@@ -16,7 +16,7 @@
   function resetState(taskId, mode) {
     bootToken += 1; // прерывает незавершённую анимацию POST
     Object.assign(state, {
-      taskId, mode,
+      taskId, mode, attemptId: SIL.Progress.newAttemptId(), recorded: false,
       build: {}, selectedId: null, focusId: null,
       mistakes: 0, hints: 0,
       startedAt: Date.now(), endedAt: null,
@@ -95,6 +95,11 @@
   }
 
   function clearResults() {
+    if (state.recorded) {
+      state.attemptId = SIL.Progress.newAttemptId(); state.recorded = false;
+      state.startedAt = Date.now(); state.endedAt = null; state.mistakes = 0; state.hints = 0;
+      if (mentor) mentor.reset();
+    }
     state.panelView = null;
     state.launchResult = null;
     state.consoleLines = [];
@@ -124,6 +129,7 @@
   }
 
   async function launch() {
+    if (state.recorded && state.launchResult) { toast(t("classroom.alreadyRecorded"), "info"); return state.launchResult; }
     if (isLocked()) {
       toast(t("common.locked"), "warn");
       return null;
@@ -153,8 +159,11 @@
     if (isExam()) state.finished = true;
     state.launchResult = { postOk: a.postOk, taskOk: a.taskOk, score };
     state.panelView = "launch";
-    if (!state.demo) {
+    if (!state.demo && !state.recorded) {
+      state.recorded = true;
       SIL.Progress.recordAttempt(state.taskId, {
+        snapshot: { type: 'pc', build: {...state.build}, launched: true },
+        attemptId: state.attemptId, checkResult: { ok: a.postOk, issueCodes: a.errors.map(e => e.code) },
         score: score.total, completed: a.taskOk, mistakes: state.mistakes, hints: state.hints,
         timeSec: Math.round(elapsedSec()), mode: state.mode
       });
@@ -224,6 +233,7 @@
     renderButtons();
     renderPanel();
     if (mentor) mentor.render();
+    if (SIL.Lessons) $("#pc-lesson").innerHTML = SIL.Lessons.html(state.taskId, state.mode);
   }
 
   function renderTabs() {
@@ -298,7 +308,7 @@
       const cards = E.COMPONENTS.filter((c) => c.slot === slot).map((c) => {
         const selected = state.selectedId === c.id;
         const installed = state.build[c.slot] === c.id;
-        return `<div class="comp-card${selected ? " is-selected" : ""}${installed ? " is-installed" : ""}" data-comp="${c.id}" draggable="${!locked}">
+        return `<div class="comp-card${selected ? " is-selected" : ""}${installed ? " is-installed" : ""}" data-comp="${c.id}" draggable="${!locked && !window.matchMedia?.('(pointer: coarse)')?.matches}">
           <button type="button" class="comp-main" data-action="select" data-id="${c.id}" aria-pressed="${selected}" ${locked ? "disabled" : ""}>
             <span class="comp-icon">${icon(c.slot)}</span>
             <span class="comp-text">
@@ -558,9 +568,9 @@
     mentor = SIL.Mentor.create({
       lab: "pc",
       container: $("#pc-mentor"),
-      isExamRunning: () => isExam() && !state.finished,
+      isExamRunning: () => isExam(),
       onHint: () => {
-        if (state.finished) return;
+        if (state.finished || state.recorded) return;
         state.hints += 1;
         renderMetrics();
       },
@@ -595,3 +605,4 @@
     get mentor() { return mentor; }
   };
 })();
+

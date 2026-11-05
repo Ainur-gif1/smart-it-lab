@@ -5,7 +5,7 @@
   const t = (...args) => SIL.t(...args);
   const { $, $$, esc } = SIL.ui;
   const LANG_KEY = "smartitlab.lang";
-  const ROUTES = ["home", "pc", "iot", "mentor", "progress", "teacher", "about"];
+  const ROUTES = ["pc", "iot", "progress", "teacher", "report"];
   let currentRoute = null;
   const demo = { lab: null };
 
@@ -30,19 +30,19 @@
       try { localStorage.setItem(LANG_KEY, active); } catch (error) { /* без сохранения */ }
     }
     applyStaticTranslations();
-    renderStats();
     renderDemoBanner();
     updateTitle();
+    SIL.Progress.notice();
     document.dispatchEvent(new CustomEvent("sil:lang"));
   }
 
   function savedLanguage() {
-    try { return localStorage.getItem(LANG_KEY) || "ru"; } catch (error) { return "ru"; }
+    try { return localStorage.getItem(LANG_KEY) || "kz"; } catch (error) { return "kz"; }
   }
 
   // ---------------- Навигация ----------------
   function updateTitle() {
-    const names = { home: "", pc: "nav.pc", iot: "nav.iot", mentor: "nav.mentor", progress: "nav.progress", teacher: "nav.teacher", about: "nav.about" };
+    const names = { report: "classroom.report", pc: "nav.pc", iot: "nav.iot", mentor: "nav.mentor", progress: "nav.progress", teacher: "nav.teacher", about: "nav.about" };
     const key = names[currentRoute];
     document.title = key ? `${t(key)} — SMART IT LAB` : `SMART IT LAB — ${t("app.subtitle")}`;
   }
@@ -56,16 +56,17 @@
     });
     closeMobileNav();
     updateTitle();
-    if (route === "home") renderStats();
     if (route === "teacher") SIL.Teacher.render();
     if (route === "progress") SIL.ProgressPage.render();
     window.scrollTo(0, 0);
   }
 
   function onHashChange() {
-    const route = location.hash.replace(/^#\/?/, "");
+    const raw = location.hash.replace(/^#\/?/, "");
+    const route = raw.startsWith("report/") ? "report" : raw;
+    if (route === "report") SIL.Reports.open(raw.slice(7));
     if (ROUTES.includes(route)) showPage(route);
-    else if (!currentRoute) showPage("home");
+    else if (route !== "main") showPage("iot");
     // Прочие якоря (например, #main у ссылки «Перейти к содержимому») страницу не меняют.
   }
 
@@ -77,12 +78,6 @@
   }
 
   // ---------------- Статистика на главной ----------------
-  function renderStats() {
-    const s = SIL.Progress.summary();
-    $("#stat-completed").textContent = `${s.completed} / ${s.total}`;
-    $("#stat-attempts").textContent = s.attempts;
-    $("#stat-avg").textContent = s.avg === null ? "—" : `${s.avg}%`;
-  }
 
   // ---------------- Демонстрация ----------------
   function startDemo(lab) {
@@ -119,10 +114,9 @@
     SIL.setLang(savedLanguage());
     SIL.PcBuilder.init();
     SIL.IotLab.init();
-    SIL.MentorPage.init();
     SIL.ProgressPage.init();
     SIL.Teacher.init();
-
+    SIL.Reports.init();
     $$("[data-lang]").forEach((btn) => btn.addEventListener("click", () => setLanguage(btn.dataset.lang)));
     $("#nav-toggle").addEventListener("click", () => {
       const open = $("#site-nav").classList.toggle("is-open");
@@ -143,7 +137,6 @@
       else if (demo.lab === lab) demo.lab = null;
       renderDemoBanner();
     });
-    document.addEventListener("sil:progress", renderStats);
     window.addEventListener("hashchange", onHashChange);
 
     setLanguage(SIL.getLang(), { save: false });
@@ -154,3 +147,4 @@
   SIL.App = { setLanguage, showPage, startDemo, exitDemo, escape: esc };
   document.addEventListener("DOMContentLoaded", init);
 })();
+

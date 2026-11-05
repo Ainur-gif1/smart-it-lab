@@ -1,0 +1,108 @@
+{
+  "date": "2026-11-05T04:36:25.562Z",
+  "scope": "Automated JavaScript engine and application tests with a lightweight DOM stub. Not a real-browser, mobile or student pilot test.",
+  "passed": 25,
+  "total": 25,
+  "tests": [
+    {
+      "name": "Complete application initializes with Kazakh as the default",
+      "status": "PASS"
+    },
+    {
+      "name": "Valid light circuit validates, starts, stops and resumes",
+      "status": "PASS"
+    },
+    {
+      "name": "Light 290 ON, 300 OFF and 310 OFF; once-only result recording",
+      "status": "PASS"
+    },
+    {
+      "name": "Invalid output GPIO prevents simulation and explains in Kazakh",
+      "status": "PASS"
+    },
+    {
+      "name": "Unknown pin, ADC mismatch, duplicate pin and DHT input-only rejection",
+      "status": "PASS"
+    },
+    {
+      "name": "Editing a validated or completed circuit invalidates simulation and result",
+      "status": "PASS"
+    },
+    {
+      "name": "Restart resets observations and sensor value; completed restart starts new attempt",
+      "status": "PASS"
+    },
+    {
+      "name": "Component removal invalidates, then re-add and rewire runs again",
+      "status": "PASS"
+    },
+    {
+      "name": "Temperature 27 and 28 OFF, 29 ON",
+      "status": "PASS"
+    },
+    {
+      "name": "Motion false OFF, true ON, false OFF",
+      "status": "PASS"
+    },
+    {
+      "name": "Non-finite sensor input is ignored; out-of-range input is clamped",
+      "status": "PASS"
+    },
+    {
+      "name": "Language switching preserves running circuit and observations",
+      "status": "PASS"
+    },
+    {
+      "name": "Exam helper locked; attempt saved only on finish, then immutable",
+      "status": "PASS"
+    },
+    {
+      "name": "PC office, gaming and workstation produce correct POST and once-only records",
+      "status": "PASS"
+    },
+    {
+      "name": "PC socket, DDR, cooling, PSU and task conditions are validated",
+      "status": "PASS"
+    },
+    {
+      "name": "PC edit after a saved result produces a new attempt ID",
+      "status": "PASS"
+    },
+    {
+      "name": "Per-attempt student code, date and check result persist across reload",
+      "status": "PASS"
+    },
+    {
+      "name": "Blocked storage keeps records in memory and displays warning",
+      "status": "PASS"
+    },
+    {
+      "name": "JSON export and duplicate import round-trip without changing own progress",
+      "status": "PASS"
+    },
+    {
+      "name": "Invalid JSON, oversized files, invalid scores and conflicting IDs are rejected atomically",
+      "status": "PASS"
+    },
+    {
+      "name": "Untrusted names render escaped and CSV formula cells are neutralized",
+      "status": "PASS"
+    },
+    {
+      "name": "Conclusion-only draft saves, preserves legacy report fields and exports",
+      "status": "PASS"
+    },
+    {
+      "name": "All six bilingual lessons have no unresolved translation keys; exam omits steps",
+      "status": "PASS"
+    },
+    {
+      "name": "Touch controls assemble a PC, wire IoT, run the slider and remove a module without dragging",
+      "status": "PASS"
+    },
+    {
+      "name": "All HTML assets are local and present, and every script parses",
+      "status": "PASS"
+    }
+  ]
+}

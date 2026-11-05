@@ -96,3 +96,4 @@
 
   SIL.ui = { esc, $, $$, toast, download, formatTime, formatDate, icon, breakdownHtml, wait };
 })();
+

@@ -199,3 +199,4 @@
     compatProblemCodes, describeIssue, describeFix, specList
   };
 })(typeof window !== "undefined" ? window : globalThis);
+
