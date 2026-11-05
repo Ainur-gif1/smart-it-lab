@@ -117,13 +117,6 @@
     SIL.ProgressPage.init();
     SIL.Teacher.init();
     SIL.Reports.init();
-    const student = $("#student-code");
-    student.value = SIL.Progress.getStudentId();
-    student.addEventListener("input", () => SIL.Progress.setStudentId(student.value));
-    document.addEventListener("sil:student", () => {
-      if (document.activeElement !== student) student.value = SIL.Progress.getStudentId();
-    });
-
     $$("[data-lang]").forEach((btn) => btn.addEventListener("click", () => setLanguage(btn.dataset.lang)));
     $("#nav-toggle").addEventListener("click", () => {
       const open = $("#site-nav").classList.toggle("is-open");
